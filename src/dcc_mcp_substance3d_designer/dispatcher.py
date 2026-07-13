@@ -20,7 +20,10 @@ class DesignerQtDispatcher(HostUiDispatcherBase):
         """Attach a small repeating Qt timer from Designer's main thread."""
         if self._timer is not None:
             return
-        from PySide2.QtCore import QTimer  # Lazy import: provided by Designer.
+        try:
+            from PySide6.QtCore import QTimer  # Lazy import: provided by current Designer.
+        except ImportError:
+            from PySide2.QtCore import QTimer  # Older Designer releases.
 
         self._timer = QTimer()
         self._timer.setInterval(self._interval_ms)

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.1.0...v0.1.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* support pyside6 in designer ([#2](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/2)) ([af2b797](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/af2b797f83287b0b692b0cdff784121429ba9c16))
+
 ## 0.1.0 (2026-07-13)
 
 

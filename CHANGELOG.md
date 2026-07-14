@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.1.1...v0.2.0) (2026-07-14)
+
+
+### Features
+
+* add Designer procedural material workflow ([#4](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/4)) ([edaf106](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/edaf10650299c43eacfee9b6d021d3373d913150))
+
 ## [0.1.1](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.1.0...v0.1.1) (2026-07-13)
 
 

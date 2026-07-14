@@ -13,19 +13,31 @@ Install this package with the Python environment used by Substance 3D Designer:
 python -m pip install dcc-mcp-substance3d-designer
 ```
 
-In Designer, open **Tools > Plugin Manager**, browse to the installed
-`dcc_mcp_substance3d_designer/designer_plugin.py`, then load the plugin. The
-MCP endpoint defaults to `http://127.0.0.1:8765/mcp`.
+For unattended startup, append the installed package's
+`dcc_mcp_substance3d_designer/designer/plugins` directory to
+`SBS_DESIGNER_PYTHON_PATH`. Designer discovers the dedicated
+`dcc_mcp_substance3d_designer_plugin` module without scanning the adapter's
+implementation modules as plugins.
+
+For an interactive installation, open **Tools > Plugin Manager**, browse to
+`dcc_mcp_substance3d_designer/designer_plugin.py`, then load the plugin. The MCP
+endpoint defaults to `http://127.0.0.1:8765/mcp`.
 
 Set `DCC_MCP_SUBSTANCE3D_DESIGNER_PORT` before launching Designer to choose a
 different port. Standard `DCC_MCP_GATEWAY_PORT` and `DCC_MCP_REGISTRY_DIR`
 settings are also honoured.
 
+For unattended launches, pass Designer a persistent configuration with
+`--config-file <path-to-default_configuration.sbscfg>`. This prevents a stale
+session-specific configuration reference from opening a blocking startup
+dialog.
+
 ## Bundled skills
 
-`designer-session` provides read-only typed tools for inspecting the active
-Designer session and its loaded packages. Host APIs are imported only while a
-tool runs, so metadata discovery remains safe outside Designer.
+`designer-session` provides typed tools for inspecting the active Designer
+session and creating a rendered procedural PBR material package. Host APIs are
+imported only while a tool runs, so metadata discovery remains safe outside
+Designer.
 
 ## Development
 

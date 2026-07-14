@@ -31,3 +31,73 @@ tools:
       read_only_hint: true
       destructive_hint: false
       idempotent_hint: true
+  - name: create_procedural_material
+    description: Create, save, render, and open a layered procedural PBR material graph.
+    input_schema:
+      type: object
+      required: [package_path, output_dir]
+      properties:
+        package_path:
+          type: string
+          description: Absolute or resolvable .sbs package path.
+        output_dir:
+          type: string
+          description: Directory for rendered PBR texture maps.
+        graph_identifier:
+          type: string
+          default: signal_forge_alloy
+        resolution:
+          type: integer
+          enum: [256, 512, 1024, 2048]
+          default: 1024
+        tiling:
+          type: integer
+          minimum: 1
+          maximum: 32
+          default: 10
+        base_color:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: number
+            minimum: 0
+            maximum: 1
+        accent_color:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: number
+            minimum: 0
+            maximum: 1
+        metallic:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.82
+        roughness:
+          type: number
+          minimum: 0
+          maximum: 1
+          default: 0.38
+        open_in_editor:
+          type: boolean
+          default: true
+    read_only: false
+    destructive: false
+    idempotent: false
+    execution: async
+    affinity: main
+    timeout_hint_secs: 300
+    source_file: scripts/create_procedural_material.py
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+    next-tools:
+      on-success:
+        - designer_session__inspect_session
+        - designer_session__list_packages
+      on-failure:
+        - designer_session__inspect_session

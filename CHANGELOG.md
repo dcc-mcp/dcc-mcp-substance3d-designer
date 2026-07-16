@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.2.0...v0.3.0) (2026-07-16)
+
+
+### Features
+
+* default adapter instances to dynamic ports ([#6](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/6)) ([ae093b1](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/ae093b1493cdc42ec1c6df549e98ac5f53016832))
+
 ## [0.2.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.1.1...v0.2.0) (2026-07-14)
 
 

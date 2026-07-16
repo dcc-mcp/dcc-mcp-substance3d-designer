@@ -20,12 +20,11 @@ For unattended startup, append the installed package's
 implementation modules as plugins.
 
 For an interactive installation, open **Tools > Plugin Manager**, browse to
-`dcc_mcp_substance3d_designer/designer_plugin.py`, then load the plugin. The MCP
-endpoint defaults to `http://127.0.0.1:8765/mcp`.
-
-Set `DCC_MCP_SUBSTANCE3D_DESIGNER_PORT` before launching Designer to choose a
-different port. Standard `DCC_MCP_GATEWAY_PORT` and `DCC_MCP_REGISTRY_DIR`
-settings are also honoured.
+`dcc_mcp_substance3d_designer/designer_plugin.py`, then load the plugin. Each
+adapter instance uses an OS-assigned port and registers it for CLI discovery.
+Connect through the stable gateway at `http://127.0.0.1:9765/mcp`; set
+`DCC_MCP_SUBSTANCE3D_DESIGNER_PORT` only when a fixed direct endpoint is required.
+Standard `DCC_MCP_GATEWAY_PORT` and `DCC_MCP_REGISTRY_DIR` settings are also honoured.
 
 For unattended launches, pass Designer a persistent configuration with
 `--config-file <path-to-default_configuration.sbscfg>`. This prevents a stale

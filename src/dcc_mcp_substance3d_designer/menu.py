@@ -7,12 +7,15 @@ from Maya (PIP-2799) and Houdini (PIP-2796).
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from typing import Optional
 
 from dcc_mcp_substance3d_designer.__version__ import __version__
 from dcc_mcp_substance3d_designer.server import get_server
+
+logger = logging.getLogger(__name__)
 
 # Track menu references for cleanup.
 _menu_ref: Optional[object] = None
@@ -26,7 +29,7 @@ def _get_qt_binding():
     """Return the available Qt binding module (PySide6 preferred, then PySide2)."""
     for name in ("PySide6", "PySide2"):
         try:
-            mod = __import__(name)
+            mod = __import__(name, fromlist=("QtGui", "QtWidgets"))
             return mod
         except ImportError:
             continue
@@ -127,18 +130,16 @@ def _designer_version() -> str:
 
 def _set_clipboard_text(text: str) -> None:
     """Set the system clipboard text, trying PySide6 then PySide2."""
-    for name in ("PySide6", "PySide2"):
-        try:
-            mod = __import__(name)
-            app = mod.QtWidgets.QApplication.instance()
-            if app is not None:
-                clipboard = app.clipboard()
-                if clipboard is not None:
-                    clipboard.setText(text)
-                    return
-        except Exception:
-            continue
-    raise RuntimeError("Unable to access system clipboard (no PySide binding available)")
+    try:
+        qt = _get_qt_binding()
+        app = qt.QtWidgets.QApplication.instance() if qt is not None else None
+        clipboard = app.clipboard() if app is not None else None
+        if clipboard is not None:
+            clipboard.setText(text)
+            return
+    except Exception as exc:
+        raise RuntimeError("Unable to access system clipboard") from exc
+    raise RuntimeError("Unable to access system clipboard")
 
 
 # ── menu actions ─────────────────────────────────────────────────────────────
@@ -251,6 +252,9 @@ def add_menu() -> None:
     """Add the unified DCC MCP menu to Designer's menu bar."""
     global _menu_ref, _menu_actions
 
+    if _menu_ref is not None:
+        return
+
     qt = _get_qt_binding()
     if qt is None:
         return
@@ -263,29 +267,38 @@ def add_menu() -> None:
     if menu_bar is None:
         return
 
+    dcc_menu = None
     try:
         dcc_menu = menu_bar.addMenu("DCC MCP")
+        action_type = getattr(qt.QtGui, "QAction", None) or qt.QtWidgets.QAction
 
-        copy_action = qt.QtWidgets.QAction("Copy Instance ID", main_window)
+        copy_action = action_type("Copy Instance ID", main_window)
         copy_action.triggered.connect(_copy_instance_id)
         dcc_menu.addAction(copy_action)
         _menu_actions.append(copy_action)
 
-        info_action = qt.QtWidgets.QAction("Server Info", main_window)
+        info_action = action_type("Server Info", main_window)
         info_action.triggered.connect(_show_server_info)
         dcc_menu.addAction(info_action)
         _menu_actions.append(info_action)
 
         dcc_menu.addSeparator()
 
-        about_action = qt.QtWidgets.QAction("About DCC MCP", main_window)
+        about_action = action_type("About DCC MCP", main_window)
         about_action.triggered.connect(_show_about)
         dcc_menu.addAction(about_action)
         _menu_actions.append(about_action)
 
         _menu_ref = dcc_menu
     except Exception:
-        pass
+        logger.exception("Failed to add the DCC MCP menu")
+        if dcc_menu is not None:
+            try:
+                dcc_menu.clear()
+                dcc_menu.deleteLater()
+            except Exception:
+                logger.exception("Failed to clean up the incomplete DCC MCP menu")
+        _menu_actions.clear()
 
 
 def remove_menu() -> None:
@@ -297,7 +310,7 @@ def remove_menu() -> None:
             _menu_ref.clear()
             _menu_ref.deleteLater()
         except Exception:
-            pass
+            logger.exception("Failed to remove the DCC MCP menu")
         _menu_ref = None
 
     _menu_actions.clear()

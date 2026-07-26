@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.3.0...v0.4.0) (2026-07-26)
+
+
+### Features
+
+* add Qt5 and Qt6 compatible DCC MCP menu ([#9](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/9)) ([eac0f0d](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/eac0f0d598921c508f0d7039fe02d2869187887c))
+
 ## [0.3.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.2.0...v0.3.0) (2026-07-16)
 
 

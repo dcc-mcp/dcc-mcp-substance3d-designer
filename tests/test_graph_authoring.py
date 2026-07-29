@@ -14,6 +14,7 @@ SCRIPT = (
     / "scripts"
     / "create_procedural_material.py"
 )
+IMPORTED_SCRIPT = SCRIPT.with_name("create_imported_pbr_material.py")
 
 
 def _load_script():
@@ -54,6 +55,24 @@ def test_invalid_resolution_fails_before_importing_designer_sdk():
 
     assert result["success"] is False
     assert "Unsupported Designer output resolution" in result["message"]
+
+
+def test_imported_material_rejects_missing_sources_before_designer_sdk():
+    spec = importlib.util.spec_from_file_location("create_imported_pbr_material", IMPORTED_SCRIPT)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    result = module.main(
+        package_path="captured.sbs",
+        output_dir="textures",
+        base_color_path="missing_base.png",
+        normal_path="missing_normal.png",
+        packed_rmas_path="missing_rmas.png",
+    )
+
+    assert result["success"] is False
+    assert "does not exist" in result["error"]
 
 
 def test_unattended_designer_plugin_entrypoint_is_packaged():

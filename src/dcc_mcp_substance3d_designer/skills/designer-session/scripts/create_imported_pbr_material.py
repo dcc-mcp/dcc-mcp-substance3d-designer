@@ -22,6 +22,17 @@ def _resolve_texture(value: str, label: str) -> Path:
     return path
 
 
+def _packed_outputs(layout: str) -> dict[str, str]:
+    layouts = {
+        "RMA": {"Roughness": "R", "Metallic": "G", "AmbientOcclusion": "B"},
+        "ARM": {"AmbientOcclusion": "R", "Roughness": "G", "Metallic": "B"},
+    }
+    normalized = str(layout).strip().upper()
+    if normalized not in layouts:
+        raise ValueError("packed_channel_layout must be RMA or ARM")
+    return layouts[normalized]
+
+
 @skill_entry
 def main(
     package_path: str,
@@ -29,12 +40,14 @@ def main(
     base_color_path: str,
     normal_path: str,
     packed_rmas_path: str,
+    packed_channel_layout: str = "RMA",
     graph_identifier: str = "imported_pbr_material",
     open_in_editor: bool = True,
     **_kwargs,
 ):
     try:
         identifier = _normalize_identifier(graph_identifier)
+        packed_outputs = _packed_outputs(packed_channel_layout)
         source_files = {
             "BaseColor": _resolve_texture(base_color_path, "base_color_path"),
             "Normal": _resolve_texture(normal_path, "normal_path"),
@@ -97,9 +110,7 @@ def main(
     rendered_sources = {
         "BaseColor": (imported_nodes["BaseColor"], first_output(imported_nodes["BaseColor"])),
         "Normal": (imported_nodes["Normal"], first_output(imported_nodes["Normal"])),
-        "Roughness": (split, "R"),
-        "Metallic": (split, "G"),
-        "AmbientOcclusion": (split, "B"),
+        **{name: (split, channel) for name, channel in packed_outputs.items()},
     }
     output_specs = {
         "BaseColor": ("baseColor", "RGBA", "sRGB"),
@@ -137,6 +148,7 @@ def main(
         "Created and rendered Designer imported PBR material",
         package_path=str(package_file),
         graph_identifier=identifier,
+        packed_channel_layout=packed_channel_layout.strip().upper(),
         node_count=len(graph.getNodes()),
         source_files={name: str(path) for name, path in source_files.items()},
         texture_files=texture_files,

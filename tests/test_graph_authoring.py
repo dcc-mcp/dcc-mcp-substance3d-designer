@@ -75,6 +75,24 @@ def test_imported_material_rejects_missing_sources_before_designer_sdk():
     assert "does not exist" in result["error"]
 
 
+def test_imported_material_supports_common_packed_channel_layouts():
+    spec = importlib.util.spec_from_file_location("create_imported_pbr_material", IMPORTED_SCRIPT)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module._packed_outputs("RMA") == {
+        "Roughness": "R",
+        "Metallic": "G",
+        "AmbientOcclusion": "B",
+    }
+    assert module._packed_outputs("arm") == {
+        "AmbientOcclusion": "R",
+        "Roughness": "G",
+        "Metallic": "B",
+    }
+
+
 def test_unattended_designer_plugin_entrypoint_is_packaged():
     plugin = (
         Path(__file__).parent.parent

@@ -102,7 +102,7 @@ tools:
       on-failure:
         - designer_session__inspect_session
   - name: create_imported_pbr_material
-    description: Import BaseColor, Normal, and packed RMAS textures, split the packed channels, and render a Designer PBR material package.
+    description: Import BaseColor, Normal, and packed RMA or ARM textures, split the packed channels, and render a Designer PBR material package.
     input_schema:
       type: object
       required:
@@ -122,7 +122,12 @@ tools:
           description: Tangent-space Normal texture path.
         packed_rmas_path:
           type: string
-          description: Packed texture with Roughness, Metallic, AO, and Specular in RGBA.
+          description: Packed texture containing Roughness, Metallic, and AO channels.
+        packed_channel_layout:
+          type: string
+          enum: [RMA, ARM]
+          default: RMA
+          description: Packed RGB channel order. Use ARM for Poly Haven arm textures.
         graph_identifier:
           type: string
           default: imported_pbr_material

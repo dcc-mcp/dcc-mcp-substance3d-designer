@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.4.0...v0.5.0) (2026-07-29)
+
+
+### Features
+
+* import packed PBR materials ([6a400b7](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/6a400b742e304ab505414a5348921e668a011632))
+* support ARM packed PBR maps ([0835310](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/0835310306b9a1f61fb39d79661750cc878597e8))
+
+
+### Documentation
+
+* align agent workflow and branding ([d801ae5](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/d801ae5cb971e4246ae7ef9048378730f44c3b03))
+* document CLI install and updates ([c648078](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/c648078ba245a6f3426a221343c1b4a99804c8df))
+
 ## [0.4.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.3.0...v0.4.0) (2026-07-26)
 
 

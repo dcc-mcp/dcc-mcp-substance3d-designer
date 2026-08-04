@@ -1,6 +1,6 @@
 tools:
   - name: inspect_session
-    description: Inspect the active Substance 3D Designer application and graph state without modifying it.
+    description: Inspect the active Substance 3D Designer application, graph, and effective color-management state without modifying it.
     input_schema:
       type: object
       properties: {}

@@ -8,6 +8,14 @@ from uuid import uuid4
 from dcc_mcp_core import HostUiDispatcherBase
 
 
+def _qtimer_type() -> Any:
+    try:
+        from PySide6.QtCore import QTimer
+    except ImportError:
+        from PySide2.QtCore import QTimer
+    return QTimer
+
+
 class DesignerQtDispatcher(HostUiDispatcherBase):
     """Drain DCC-MCP work from Designer's Qt main thread."""
 
@@ -15,22 +23,32 @@ class DesignerQtDispatcher(HostUiDispatcherBase):
         super().__init__(label="Substance 3D Designer Qt dispatcher")
         self._interval_ms = interval_ms
         self._timer: Any = None
+        self._startup_timer: Any = None
 
     def install(self) -> None:
         """Attach a small repeating Qt timer from Designer's main thread."""
         if self._timer is not None:
             return
-        try:
-            from PySide6.QtCore import QTimer  # Lazy import: provided by current Designer.
-        except ImportError:
-            from PySide2.QtCore import QTimer  # Older Designer releases.
-
+        QTimer = _qtimer_type()
         self._timer = QTimer()
         self._timer.setInterval(self._interval_ms)
         self._timer.timeout.connect(lambda: self.drain_queue(self._interval_ms // 2))
         self._timer.start()
 
+    def schedule_startup(self, callback: Callable[[], None]) -> None:
+        """Run adapter startup on the next Designer Qt event-loop turn."""
+        if self._startup_timer is not None:
+            return
+        QTimer = _qtimer_type()
+        self._startup_timer = QTimer()
+        self._startup_timer.setSingleShot(True)
+        self._startup_timer.timeout.connect(callback)
+        self._startup_timer.start(0)
+
     def uninstall(self) -> None:
+        if self._startup_timer is not None:
+            self._startup_timer.stop()
+            self._startup_timer = None
         if self._timer is not None:
             self._timer.stop()
             self._timer = None

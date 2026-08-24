@@ -44,6 +44,8 @@ jobs:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[dev]"
+      - name: Install lifecycle smoke
+        run: python -m pytest tests/test_install_lifecycle.py
       - run: ruff check src tests tools
       - run: ruff format --check src tests tools
       - run: python tools/lint_skills.py

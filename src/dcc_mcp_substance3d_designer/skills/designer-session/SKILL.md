@@ -10,7 +10,7 @@ allowed-tools: Python
 metadata:
   dcc-mcp:
     dcc: substance3d_designer
-    version: "0.0.0"
+    version: "0.5.0"
     layer: bootstrap
     stage: bootstrap
     search-hint: "substance designer session package procedural imported packed rmas pbr graph render textures inspect"
@@ -20,7 +20,7 @@ metadata:
 
 # Designer Session
 
-Read the active Designer session, then create a typed layered PBR graph that
+Read the active Designer session and its adapter lifecycle health, then create a typed layered PBR graph that
 saves an `.sbs` package and renders BaseColor, Roughness, Metallic, Height, and
 Normal maps. The authoring tool uses public Designer graph APIs and never
 executes arbitrary code supplied by callers.

@@ -35,6 +35,11 @@ class DesignerQtDispatcher(HostUiDispatcherBase):
         self._timer.timeout.connect(lambda: self.drain_queue(self._interval_ms // 2))
         self._timer.start()
 
+    @property
+    def is_installed(self) -> bool:
+        """Return whether the Designer event-loop pump is attached."""
+        return self._timer is not None
+
     def schedule_startup(self, callback: Callable[[], None]) -> None:
         """Run adapter startup on the next Designer Qt event-loop turn."""
         if self._startup_timer is not None:

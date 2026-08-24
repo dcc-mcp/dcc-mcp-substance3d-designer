@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 
 class _Signal:
@@ -96,6 +96,15 @@ def test_startup_registration_failure_is_logged_without_escaping_qt(monkeypatch,
         event_loop.run_once()
 
     assert "registry unavailable" in caplog.text
+    status = plugin.get_lifecycle_status()
+    assert status["phase"] == "failed"
+    assert status["healthy"] is False
+    assert status["failure"] == {"stage": "server_start", "kind": "RuntimeError"}
+    assert "registry unavailable" not in str(status)
+
+    plugin.initializeSDPlugin()
+
+    assert plugin.get_lifecycle_status() == status
 
 
 def test_unload_cancels_registration_pending_in_the_qt_loop(monkeypatch):
@@ -139,3 +148,46 @@ def test_startup_registration_is_idempotent(monkeypatch):
 
     assert registrations == [plugin._dispatcher]
     assert menus == [True]
+
+
+def test_lifecycle_status_reports_a_ready_registered_adapter(monkeypatch):
+    from dcc_mcp_substance3d_designer import plugin
+
+    event_loop = _install_fake_qt(monkeypatch)
+    server = SimpleNamespace(is_running=True, instance_id="designer-instance")
+    monkeypatch.setattr(plugin, "_dispatcher", None)
+    monkeypatch.setattr(plugin, "start_server", lambda _dispatcher: server)
+    monkeypatch.setattr(plugin, "get_server", lambda: server)
+    monkeypatch.setattr(plugin, "add_menu", lambda: None)
+
+    plugin.initializeSDPlugin()
+    event_loop.run_once()
+
+    assert plugin.get_lifecycle_status() == {
+        "phase": "ready",
+        "healthy": True,
+        "dispatcher_installed": True,
+        "server_running": True,
+        "instance_id": "designer-instance",
+        "failure": None,
+    }
+
+
+def test_lifecycle_status_fails_closed_without_gateway_instance_binding(monkeypatch):
+    from dcc_mcp_substance3d_designer import plugin
+
+    event_loop = _install_fake_qt(monkeypatch)
+    server = SimpleNamespace(is_running=True, instance_id=None)
+    monkeypatch.setattr(plugin, "_dispatcher", None)
+    monkeypatch.setattr(plugin, "start_server", lambda _dispatcher: server)
+    monkeypatch.setattr(plugin, "get_server", lambda: server)
+    monkeypatch.setattr(plugin, "add_menu", lambda: None)
+
+    plugin.initializeSDPlugin()
+    event_loop.run_once()
+
+    status = plugin.get_lifecycle_status()
+    assert status["phase"] == "ready"
+    assert status["server_running"] is True
+    assert status["instance_id"] is None
+    assert status["healthy"] is False

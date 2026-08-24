@@ -50,3 +50,29 @@ def test_inspect_session_reports_effective_ocio_config(monkeypatch, tmp_path):
     assert color_management["working_space"] == "ACEScg"
     assert color_management["environment_path"] == str(config)
     assert len(color_management["config_sha256"]) == 64
+
+
+def test_inspect_session_reports_adapter_lifecycle_health(monkeypatch):
+    from dcc_mcp_substance3d_designer import plugin
+
+    app = SimpleNamespace(
+        getVersion=lambda: "16.0.0",
+        getUIMgr=lambda: SimpleNamespace(getCurrentGraph=lambda: None),
+        getColorManagementEngine=lambda: None,
+    )
+    sd = ModuleType("sd")
+    sd.getContext = lambda: SimpleNamespace(getSDApplication=lambda: app)
+    monkeypatch.setitem(sys.modules, "sd", sd)
+    lifecycle = {
+        "phase": "ready",
+        "healthy": True,
+        "dispatcher_installed": True,
+        "server_running": True,
+        "instance_id": "designer-instance",
+        "failure": None,
+    }
+    monkeypatch.setattr(plugin, "get_lifecycle_status", lambda: lifecycle)
+
+    result = _load_script().main()
+
+    assert result["context"]["adapter_lifecycle"] == lifecycle

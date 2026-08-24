@@ -1,0 +1,562 @@
+from __future__ import annotations
+
+import json
+import os
+import sys
+import threading
+import time
+import types
+from pathlib import Path, PurePosixPath
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _synthetic_designer(tmp_path, version="15.1.0", embedded_python=None):
+    host = tmp_path / f"Adobe Substance 3D Designer {version}.exe"
+    host.write_bytes(b"synthetic host")
+    python_version = embedded_python or f"{sys.version_info.major}.{sys.version_info.minor}"
+    (host.parent / "plugins" / "pythonsdk" / "lib" / f"python{python_version}").mkdir(parents=True)
+    return host
+
+
+def test_install_defaults_to_a_non_mutating_public_plan(tmp_path, monkeypatch, capsys):
+    host = _synthetic_designer(tmp_path)
+    install_root = tmp_path / "install-root"
+    source_path = str(ROOT / "src")
+    inherited = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(part for part in (source_path, inherited) if part))
+    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
+
+    from dcc_mcp_substance3d_designer.install_cli import main
+
+    exit_code = main(
+        [
+            "install",
+            "--dcc-path",
+            str(host),
+            "--python",
+            sys.executable,
+            "--json",
+        ]
+    )
+    result = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert result["schema_version"] == 1
+    assert result["status"] == "planned"
+    assert result["dcc_type"] == "substance3d_designer"
+    assert result["adapter_version"]
+    assert result["core_version"]
+    assert result["receipt_path"]
+    assert result["profile"] == {
+        "plugin_search_path": str(install_root / "payload" / "plugins"),
+        "selection_source": "receipted_launcher",
+    }
+    assert result["verify"] == {
+        "directly_usable": False,
+        "failure_stage": None,
+        "failure_reason": None,
+    }
+    assert [step["id"] for step in result["steps"]] == [
+        "preflight",
+        "install-launcher",
+        "receipt",
+        "verify",
+    ]
+    assert result["next_steps"] == [
+        {
+            "id": "execute_install",
+            "description": "Execute the validated Designer install plan.",
+            "command": [
+                "dcc-mcp-substance3d-designer",
+                "install",
+                "--dcc-path",
+                str(host),
+                "--python",
+                sys.executable,
+                "--json",
+                "--yes",
+            ],
+            "why": "Planning does not modify the Designer installation.",
+        }
+    ]
+    assert not install_root.exists()
+
+
+def test_install_stages_a_receipted_launcher_and_uninstall_consumes_only_the_receipt(tmp_path, monkeypatch, capsys):
+    host = _synthetic_designer(tmp_path)
+    install_root = tmp_path / "install-root"
+    source_path = str(ROOT / "src")
+    inherited = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join(part for part in (source_path, inherited) if part))
+    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
+    monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
+    monkeypatch.setenv("DCC_MCP_INSTALL_VERIFY_TIMEOUT", "0.01")
+
+    from dcc_mcp_substance3d_designer.install_cli import main
+
+    common = ["--dcc-path", str(host), "--python", sys.executable, "--json"]
+    install_exit = main(["install", *common, "--yes"])
+    installed = json.loads(capsys.readouterr().out)
+
+    assert install_exit == 40
+    assert installed["status"] == "partial"
+    assert installed["verify"]["directly_usable"] is False
+    assert installed["verify"]["failure_stage"] == "readiness"
+    receipt_path = Path(installed["receipt_path"])
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    suffix = ".cmd" if os.name == "nt" else ".sh"
+    owned_paths = {Path(item["path"]) for item in receipt["files"]}
+    assert owned_paths == {
+        install_root / "payload" / "plugins" / "dcc_mcp_substance3d_designer_plugin.py",
+        install_root / "launchers" / f"substance3d_designer{suffix}",
+    }
+    assert all(path.is_file() for path in owned_paths)
+    assert all(len(item["sha256"]) == 64 for item in receipt["files"])
+    launcher = next(path for path in owned_paths if path.suffix == suffix)
+    launcher_text = launcher.read_text(encoding="utf-8")
+    assert "SBS_DESIGNER_PYTHON_PATH" in launcher_text
+    assert "PYTHONPATH" in launcher_text
+
+    assert main(["uninstall", *common]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "planned"
+    assert all(path.exists() for path in owned_paths)
+
+    assert main(["uninstall", *common, "--yes"]) == 0
+    removed = json.loads(capsys.readouterr().out)
+    assert removed["status"] == "ok"
+    assert not receipt_path.exists()
+    assert all(not path.exists() for path in owned_paths)
+
+    assert main(["uninstall", *common, "--yes"]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ok"
+
+
+def test_status_reports_repair_and_reinstall_converges(tmp_path, monkeypatch, capsys):
+    host = _synthetic_designer(tmp_path)
+    install_root = tmp_path / "install-root"
+    inherited = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(part for part in (str(ROOT / "src"), inherited) if part),
+    )
+    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
+    monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
+    monkeypatch.setenv("DCC_MCP_INSTALL_VERIFY_TIMEOUT", "0.01")
+
+    from dcc_mcp_substance3d_designer.install_cli import main
+
+    common = ["--dcc-path", str(host), "--python", sys.executable, "--json"]
+    assert main(["install", *common, "--yes"]) == 40
+    installed = json.loads(capsys.readouterr().out)
+    receipt = json.loads(Path(installed["receipt_path"]).read_text(encoding="utf-8"))
+    plugin = next(Path(item["path"]) for item in receipt["files"] if item["path"].endswith("_plugin.py"))
+    plugin.unlink()
+
+    assert main(["status", *common]) == 10
+    damaged = json.loads(capsys.readouterr().out)
+    assert damaged["status"] == "partial"
+    assert damaged["install_state"] == "repair"
+
+    assert main(["install", *common, "--yes"]) == 40
+    capsys.readouterr()
+    assert main(["status", *common]) == 0
+    repaired = json.loads(capsys.readouterr().out)
+    assert repaired["status"] == "ok"
+    assert repaired["install_state"] == "current"
+
+
+def test_failed_upgrade_restores_the_previous_receipted_installation(tmp_path, monkeypatch, capsys):
+    host = _synthetic_designer(tmp_path)
+    install_root = tmp_path / "install-root"
+    inherited = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(part for part in (str(ROOT / "src"), inherited) if part),
+    )
+    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
+    monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
+    monkeypatch.setenv("DCC_MCP_INSTALL_VERIFY_TIMEOUT", "0.01")
+
+    from dcc_mcp_substance3d_designer import _installer
+    from dcc_mcp_substance3d_designer.install_cli import main
+
+    common = ["--dcc-path", str(host), "--python", sys.executable, "--json"]
+    assert main(["install", *common, "--yes"]) == 40
+    installed = json.loads(capsys.readouterr().out)
+    receipt_path = Path(installed["receipt_path"])
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    owned = [Path(item["path"]) for item in receipt["files"]]
+    before = {path: path.read_bytes() for path in [*owned, receipt_path]}
+
+    monkeypatch.setattr(_installer, "_plugin_source", lambda _ctx: "changed payload")
+
+    def fail_receipt_commit(*_args, **_kwargs):
+        raise OSError("synthetic receipt commit failure")
+
+    monkeypatch.setattr(_installer, "_write_json_atomic", fail_receipt_commit)
+
+    assert main(["upgrade", *common, "--yes"]) == 30
+    failed = json.loads(capsys.readouterr().out)
+
+    assert failed["status"] == "failed"
+    assert failed["verify"]["failure_stage"] == "install"
+    assert {path: path.read_bytes() for path in [*owned, receipt_path]} == before
+    staging = install_root / "staging"
+    assert not staging.exists() or not any(staging.iterdir())
+
+
+def test_upgrade_does_not_rename_the_live_payload_before_the_core_lock_gate(tmp_path, monkeypatch, capsys):
+    host = _synthetic_designer(tmp_path)
+    install_root = tmp_path / "install-root"
+    inherited = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(part for part in (str(ROOT / "src"), inherited) if part),
+    )
+    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
+    monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
+    monkeypatch.setenv("DCC_MCP_INSTALL_VERIFY_TIMEOUT", "0.01")
+
+    from dcc_mcp_substance3d_designer import _installer
+    from dcc_mcp_substance3d_designer.install_cli import main
+
+    common = ["--dcc-path", str(host), "--python", sys.executable, "--json"]
+    assert main(["install", *common, "--yes"]) == 40
+    capsys.readouterr()
+
+    original_replace = _installer.os.replace
+    live_payload = install_root / "payload"
+
+    def reject_live_payload_rename(source, destination):
+        if Path(source) == live_payload and "backup" in Path(destination).parts:
+            raise AssertionError("live payload bypassed safe_replace_tree")
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(_installer.os, "replace", reject_live_payload_rename)
+
+    assert main(["upgrade", *common, "--yes"]) == 40
+    upgraded = json.loads(capsys.readouterr().out)
+    assert upgraded["status"] == "partial"
+    assert upgraded["verify"]["failure_stage"] == "readiness"
+
+
+def test_core_lock_evidence_returns_restart_without_losing_the_previous_install(tmp_path, monkeypatch, capsys):
+    host = _synthetic_designer(tmp_path)
+    install_root = tmp_path / "install-root"
+    inherited = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(part for part in (str(ROOT / "src"), inherited) if part),
+    )
+    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
+    monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
+    monkeypatch.setenv("DCC_MCP_INSTALL_VERIFY_TIMEOUT", "0.01")
+
+    from dcc_mcp_substance3d_designer import _installer
+    from dcc_mcp_substance3d_designer.install_cli import main
+
+    common = ["--dcc-path", str(host), "--python", sys.executable, "--json"]
+    assert main(["install", *common, "--yes"]) == 40
+    installed = json.loads(capsys.readouterr().out)
+    receipt_path = Path(installed["receipt_path"])
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    owned = [Path(item["path"]) for item in receipt["files"]]
+    before = {path: path.read_bytes() for path in [*owned, receipt_path]}
+
+    monkeypatch.setattr(
+        _installer,
+        "safe_replace_tree",
+        lambda *_args: {
+            "success": False,
+            "requires_restart": True,
+            "message": "synthetic Windows lock",
+        },
+    )
+
+    assert main(["upgrade", *common, "--yes"]) == 50
+    blocked = json.loads(capsys.readouterr().out)
+
+    assert blocked["status"] == "requires_restart"
+    assert blocked["receipt_path"] == str(receipt_path)
+    assert blocked["next_steps"][0]["command"][-1] == "--yes"
+    assert {path: path.read_bytes() for path in [*owned, receipt_path]} == before
+
+
+def test_locked_uninstall_returns_one_machine_executable_retry(tmp_path, monkeypatch, capsys):
+    host = _synthetic_designer(tmp_path)
+    install_root = tmp_path / "install-root"
+    inherited = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(part for part in (str(ROOT / "src"), inherited) if part),
+    )
+    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
+    monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
+    monkeypatch.setenv("DCC_MCP_INSTALL_VERIFY_TIMEOUT", "0.01")
+
+    from dcc_mcp_substance3d_designer import _installer
+    from dcc_mcp_substance3d_designer.install_cli import main
+
+    common = ["--dcc-path", str(host), "--python", sys.executable, "--json"]
+    assert main(["install", *common, "--yes"]) == 40
+    installed = json.loads(capsys.readouterr().out)
+    receipt_path = Path(installed["receipt_path"])
+
+    monkeypatch.setattr(
+        _installer,
+        "safe_remove_tree",
+        lambda *_args: {
+            "success": False,
+            "requires_restart": True,
+            "message": "synthetic Windows lock",
+        },
+    )
+
+    assert main(["uninstall", *common, "--yes"]) == 50
+    blocked = json.loads(capsys.readouterr().out)
+
+    assert blocked["status"] == "requires_restart"
+    assert blocked["next_steps"] == [
+        {
+            "id": "retry_uninstall",
+            "description": "Close Designer and retry the uninstall operation.",
+            "command": [
+                "dcc-mcp-substance3d-designer",
+                "uninstall",
+                "--dcc-path",
+                str(host),
+                "--python",
+                sys.executable,
+                "--json",
+                "--yes",
+            ],
+            "why": "Core reported a loaded or locked artifact under the install root.",
+        }
+    ]
+    assert receipt_path.exists()
+
+
+def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, monkeypatch, capsys):
+    host = _synthetic_designer(tmp_path)
+    install_root = tmp_path / "install-root"
+    inherited = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(part for part in (str(ROOT / "src"), inherited) if part),
+    )
+    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
+    monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
+    monkeypatch.setenv("DCC_MCP_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setenv("DCC_MCP_DISABLE_FILE_LOGGING", "1")
+    monkeypatch.setenv("DCC_MCP_DISABLE_JOB_PERSISTENCE", "1")
+    monkeypatch.setenv("DCC_MCP_DISABLE_TELEMETRY", "1")
+
+    color_engine = types.SimpleNamespace(
+        getName=lambda: "legacy",
+        getWorkingColorSpaceName=lambda: "Linear",
+        getRawColorSpaceName=lambda: "Raw",
+        getOCIOConfigFileName=lambda: "",
+    )
+    ui_manager = types.SimpleNamespace(getCurrentGraph=lambda: None)
+    probe_calls = {"version": 0}
+
+    def get_version():
+        probe_calls["version"] += 1
+        return "15.1.0"
+
+    app = types.SimpleNamespace(
+        getVersion=get_version,
+        getUIMgr=lambda: ui_manager,
+        getColorManagementEngine=lambda: color_engine,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "sd",
+        types.SimpleNamespace(getContext=lambda: types.SimpleNamespace(getSDApplication=lambda: app)),
+    )
+
+    from dcc_mcp_substance3d_designer.dispatcher import DesignerQtDispatcher
+    from dcc_mcp_substance3d_designer.install_cli import main
+    from dcc_mcp_substance3d_designer.server import SubstanceDesignerMcpServer
+
+    dispatcher = DesignerQtDispatcher()
+    server = SubstanceDesignerMcpServer(dispatcher, port=0)
+    server.register_builtin_actions()
+    server.start(install_atexit_hook=False)
+    try:
+        common = ["--dcc-path", str(host), "--python", sys.executable, "--json"]
+
+        def run_while_pumping(arguments):
+            result = []
+            worker = threading.Thread(target=lambda: result.append(main(arguments)))
+            worker.start()
+            deadline = time.monotonic() + 5
+            while worker.is_alive() and time.monotonic() < deadline:
+                dispatcher.drain_queue(5)
+                time.sleep(0.01)
+            worker.join(timeout=1)
+            assert not worker.is_alive()
+            return result[0]
+
+        assert run_while_pumping(["install", *common, "--yes"]) == 0
+        installed = json.loads(capsys.readouterr().out)
+        assert installed["verify"] == {
+            "directly_usable": True,
+            "failure_stage": None,
+            "failure_reason": None,
+            "probe_tool": "designer_diagnostics__ping",
+        }
+        assert probe_calls["version"] > 0
+
+        assert run_while_pumping(["verify", *common]) == 0
+        verified = json.loads(capsys.readouterr().out)
+        assert verified["verify"]["directly_usable"] is True
+        assert verified["verify"]["probe_tool"] == "designer_diagnostics__ping"
+    finally:
+        server.stop()
+
+
+def test_packaged_designer_plugin_captures_bootstrap_failures():
+    plugin = (
+        ROOT
+        / "src"
+        / "dcc_mcp_substance3d_designer"
+        / "designer"
+        / "plugins"
+        / "dcc_mcp_substance3d_designer_plugin.py"
+    ).read_text(encoding="utf-8")
+
+    assert "capture_bootstrap_errors" in plugin
+    assert 'phase="import"' in plugin
+    assert 'phase="startup"' in plugin
+    assert 'phase="shutdown"' in plugin
+
+    interactive = ROOT.joinpath("src", "dcc_mcp_substance3d_designer", "designer_plugin.py").read_text(encoding="utf-8")
+    assert "designer.plugins.dcc_mcp_substance3d_designer_plugin" in interactive
+    assert "from dcc_mcp_substance3d_designer.plugin import" not in interactive
+
+
+def test_distribution_exposes_the_standard_lifecycle_contract():
+    pyproject = ROOT.joinpath("pyproject.toml").read_text(encoding="utf-8")
+
+    assert "[project.scripts]" in pyproject
+    assert 'dcc-mcp-substance3d-designer = "dcc_mcp_substance3d_designer.install_cli:main"' in pyproject
+    assert "dcc-mcp-core>=0.20.8,<1.0.0" in pyproject
+    assert '"src/dcc_mcp_substance3d_designer/designer/**"' in pyproject
+    assert '"install.md"' in pyproject
+
+
+def test_readiness_uses_a_small_read_only_diagnostics_skill():
+    skill_root = ROOT / "src" / "dcc_mcp_substance3d_designer" / "skills" / "designer-diagnostics"
+    tools = skill_root.joinpath("tools.yaml").read_text(encoding="utf-8")
+    server = ROOT.joinpath("src", "dcc_mcp_substance3d_designer", "server.py").read_text(encoding="utf-8")
+
+    assert skill_root.joinpath("SKILL.md").is_file()
+    assert skill_root.joinpath("scripts", "ping.py").is_file()
+    assert "name: ping" in tools
+    assert "read_only: true" in tools
+    assert "execution: sync" in tools
+    assert "affinity: main" in tools
+    assert 'load_skill("designer-diagnostics")' in server
+    assert 'load_skill("designer-session")' not in server
+
+
+def test_install_runbook_and_ci_publish_the_canonical_contract():
+    runbook = ROOT.joinpath("install.md").read_text(encoding="utf-8")
+    readme = ROOT.joinpath("README.md").read_text(encoding="utf-8")
+    workflow = ROOT.joinpath(".github", "workflows", "ci.yml").read_text(encoding="utf-8")
+
+    for heading in (
+        "## Requirements",
+        "## Supported versions",
+        "## Agent quick path",
+        "## Manual path",
+        "## Verify",
+        "## Upgrade",
+        "## Uninstall",
+        "## Troubleshooting",
+    ):
+        assert heading in runbook
+    for platform in ("Windows", "macOS", "Linux"):
+        assert platform in runbook
+    for verb in ("install", "status", "verify", "uninstall", "upgrade"):
+        assert f"dcc-mcp-substance3d-designer {verb}" in runbook
+    assert "--config-file" in runbook
+    assert "directly_usable" in runbook
+    assert "Core PR #2320" in runbook
+    assert "[Install SOP](install.md)" in readme
+    assert "Install lifecycle smoke" in workflow
+    assert "tests/test_install_lifecycle.py" in workflow
+
+
+def test_preflight_rejects_a_python_abi_that_cannot_load_in_designer(tmp_path, monkeypatch, capsys):
+    host = _synthetic_designer(tmp_path, embedded_python="0.1")
+    install_root = tmp_path / "install-root"
+    inherited = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(part for part in (str(ROOT / "src"), inherited) if part),
+    )
+    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
+
+    from dcc_mcp_substance3d_designer.install_cli import main
+
+    exit_code = main(["install", "--dcc-path", str(host), "--python", sys.executable, "--json", "--dry-run"])
+    result = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 10
+    assert result["verify"]["directly_usable"] is False
+    assert result["verify"]["failure_stage"] == "python_compatibility"
+    assert "embedded Python 0.1" in result["verify"]["failure_reason"]
+    assert not install_root.exists()
+
+
+def test_posix_launcher_preserves_existing_paths_when_owned_paths_contain_spaces():
+    from dcc_mcp_substance3d_designer._installer import _launcher_payload
+
+    context = types.SimpleNamespace(
+        plugin_path=PurePosixPath("/tmp/root with spaces/payload/plugins/plugin.py"),
+        python_root=PurePosixPath("/tmp/python with spaces/site-packages"),
+        host_path=PurePosixPath("/opt/Adobe Designer/Designer"),
+    )
+
+    launcher = _launcher_payload(context, platform_name="posix").decode("utf-8")
+
+    assert "adapter_plugins='/tmp/root with spaces/payload/plugins'" in launcher
+    assert "python_root='/tmp/python with spaces/site-packages'" in launcher
+    assert '${SBS_DESIGNER_PYTHON_PATH}:}${adapter_plugins}"' in launcher
+    assert 'PYTHONPATH="${python_root}${PYTHONPATH:+:${PYTHONPATH}}"' in launcher
+    assert "exec '/opt/Adobe Designer/Designer' \"$@\"" in launcher
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows standard install discovery")
+def test_preflight_discovers_a_single_standard_designer_install(tmp_path, monkeypatch, capsys):
+    host = tmp_path / "Adobe" / "Adobe Substance 3D Designer" / "Adobe Substance 3D Designer.exe"
+    host.parent.mkdir(parents=True)
+    host.write_bytes(b"synthetic host")
+    (host.parent / "plugins" / "pythonsdk" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}").mkdir(
+        parents=True
+    )
+    install_root = tmp_path / "install-root"
+    inherited = os.environ.get("PYTHONPATH", "")
+    monkeypatch.setenv(
+        "PYTHONPATH",
+        os.pathsep.join(part for part in (str(ROOT / "src"), inherited) if part),
+    )
+    monkeypatch.setenv("ProgramFiles", str(tmp_path))
+    monkeypatch.setenv("ProgramW6432", str(tmp_path))
+    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_VERSION", "15.1.0")
+    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
+
+    from dcc_mcp_substance3d_designer.install_cli import main
+
+    exit_code = main(["install", "--python", sys.executable, "--json", "--dry-run"])
+    result = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert result["host"]["path"] == str(host.resolve())
+    assert result["host"]["version"] == "15.1.0"
+    assert not install_root.exists()

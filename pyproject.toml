@@ -22,7 +22,10 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Topic :: Multimedia :: Graphics :: 3D Modeling",
 ]
-dependencies = ["dcc-mcp-core>=0.19.45,<1.0.0"]
+dependencies = ["dcc-mcp-core>=0.20.8,<1.0.0"]
+
+[project.scripts]
+dcc-mcp-substance3d-designer = "dcc_mcp_substance3d_designer.install_cli:main"
 
 [project.optional-dependencies]
 dev = ["build", "pytest>=7.0", "ruff>=0.8.0", "twine", "pyyaml>=6.0"]
@@ -38,10 +41,13 @@ substance3d_designer = "dcc_mcp_substance3d_designer:SubstanceDesignerMcpServer"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dcc_mcp_substance3d_designer"]
-artifacts = ["src/dcc_mcp_substance3d_designer/skills/**"]
+artifacts = [
+    "src/dcc_mcp_substance3d_designer/skills/**",
+    "src/dcc_mcp_substance3d_designer/designer/**",
+]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/dcc_mcp_substance3d_designer", "tests", "tools", "README.md", "CHANGELOG.md", "LICENSE", "release-please-config.json", ".release-please-manifest.json"]
+include = ["src/dcc_mcp_substance3d_designer", "tests", "tools", "README.md", "install.md", "CHANGELOG.md", "LICENSE", "release-please-config.json", ".release-please-manifest.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

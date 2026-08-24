@@ -54,21 +54,19 @@ tools execute through Designer's Qt main thread instead of a separate process.
 
 ## Install and load
 
-Install this package with the Python environment used by Substance 3D Designer:
+Follow the canonical [Install SOP](install.md) for automatic host discovery, a zero-write plan,
+staged installation, receipt-owned uninstall, and verify-to-usable diagnostics:
 
 ```bash
-python -m pip install dcc-mcp-substance3d-designer
+python3.11 -m pip install dcc-mcp-substance3d-designer
+dcc-mcp-substance3d-designer install --dcc-path "/path/to/Designer" --python python3.11 --json --dry-run
+dcc-mcp-substance3d-designer install --dcc-path "/path/to/Designer" --python python3.11 --json --yes
 ```
 
-For unattended startup, append the installed package's
-`dcc_mcp_substance3d_designer/designer/plugins` directory to
-`SBS_DESIGNER_PYTHON_PATH`. Designer discovers the dedicated
-`dcc_mcp_substance3d_designer_plugin` module without scanning the adapter's
-implementation modules as plugins.
-
-For an interactive installation, open **Tools > Plugin Manager**, browse to
-`dcc_mcp_substance3d_designer/designer_plugin.py`, then load the plugin. Each
-adapter instance uses an OS-assigned port and registers it for CLI discovery.
+The receipted launcher preserves existing `SBS_DESIGNER_PYTHON_PATH` and `PYTHONPATH` values while
+adding the dedicated plugin. A source checkout may still be loaded interactively through **Tools >
+Plugin Manager** as documented in the SOP. Each adapter instance uses an OS-assigned port and
+registers it for CLI discovery.
 Connect through the stable gateway at `http://127.0.0.1:9765/mcp`; set
 `DCC_MCP_SUBSTANCE3D_DESIGNER_PORT` only when a fixed direct endpoint is required.
 Standard `DCC_MCP_GATEWAY_PORT` and `DCC_MCP_REGISTRY_DIR` settings are also honoured.

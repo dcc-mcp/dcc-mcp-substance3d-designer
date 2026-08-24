@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+import yaml
+
 import dcc_mcp_substance3d_designer as adapter
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +23,15 @@ def test_plugin_and_skill_contract_files_exist():
     assert package.joinpath("designer_plugin.py").exists()
     assert package.joinpath("skills", "designer-session", "SKILL.md").exists()
     assert package.joinpath("skills", "designer-session", "tools.yaml").exists()
+
+
+def test_designer_session_metadata_matches_the_shipped_authoring_skill():
+    skill_file = ROOT / "src" / "dcc_mcp_substance3d_designer" / "skills" / "designer-session" / "SKILL.md"
+    frontmatter = skill_file.read_text(encoding="utf-8").split("---", 2)[1]
+    metadata = yaml.safe_load(frontmatter)
+
+    assert metadata["metadata"]["dcc-mcp"]["version"] == adapter.__version__
+    assert "author" in metadata["description"].casefold()
 
 
 def test_start_server_defers_port_resolution_to_core(monkeypatch):

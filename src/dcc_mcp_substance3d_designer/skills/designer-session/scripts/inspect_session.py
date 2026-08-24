@@ -34,6 +34,8 @@ def _ocio_details(engine):
 def main(**_kwargs):
     import sd  # Lazy import: requires Designer's embedded Python.
 
+    from dcc_mcp_substance3d_designer.plugin import get_lifecycle_status
+
     app = sd.getContext().getSDApplication()
     ui = _value(app, "getUIMgr")
     graph = _value(ui, "getCurrentGraph") if ui else None
@@ -42,6 +44,7 @@ def main(**_kwargs):
         "Inspected Substance 3D Designer session",
         version=str(_value(app, "getVersion") or "unknown"),
         active_graph=str(_value(graph, "getIdentifier", "getName") or "none"),
+        adapter_lifecycle=get_lifecycle_status(),
         color_management=_ocio_details(color_engine),
     )
 

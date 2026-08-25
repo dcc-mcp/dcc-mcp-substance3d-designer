@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -31,7 +32,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     stdout_path = Path(arguments[1])
     stderr_path = Path(arguments[2])
     parent_pid = os.getppid()
+    leader_pid = os.getpid()
+    leader_pgid = os.getpgrp() if os.name == "posix" else None
+    if os.name == "posix" and (leader_pgid != leader_pid or os.getsid(0) != leader_pid):
+        _write_status(status_path, {"state": "launch_failed", "error_type": "ProcessGroupOwnershipError"})
+        return 70
     with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
+        child = None
+        completed = False
         try:
             child = subprocess.Popen(
                 command,
@@ -48,24 +56,29 @@ def main(argv: Optional[List[str]] = None) -> int:
                     ready_path,
                     {"state": "running", "pid": child.pid, "supervisor_pid": os.getpid()},
                 )
-            returncode = child.wait()
-            stdout_file.flush()
-            stderr_file.flush()
-            _write_status(
-                status_path,
-                {
-                    "state": "completed",
-                    "pid": child.pid,
-                    "supervisor_pid": os.getpid(),
-                    "returncode": int(returncode),
-                },
-            )
-    while True:
-        if os.getppid() != parent_pid:
-            if os.name == "posix":
-                os.killpg(os.getpgrp(), 9)
-            return 70
-        time.sleep(0.05)
+        while True:
+            if os.getppid() != parent_pid:
+                if os.name == "posix":
+                    if os.getpid() != leader_pid or os.getpgrp() != leader_pgid or os.getsid(0) != leader_pid:
+                        return 70
+                    os.killpg(leader_pgid, signal.SIGKILL)
+                return 70
+            if child is not None and not completed:
+                returncode = child.poll()
+                if returncode is not None:
+                    completed = True
+                    stdout_file.flush()
+                    stderr_file.flush()
+                    _write_status(
+                        status_path,
+                        {
+                            "state": "completed",
+                            "pid": child.pid,
+                            "supervisor_pid": os.getpid(),
+                            "returncode": int(returncode),
+                        },
+                    )
+            time.sleep(0.02)
 
 
 if __name__ == "__main__":

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ctypes
 import ipaddress
 import json
 import os
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -16,6 +18,94 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 _MAX_PROBE_OUTPUT_BYTES = 256 * 1024
+_PROC_PIDTBSDINFO = 3
+
+
+class _DarwinProcBsdInfo(ctypes.Structure):
+    """Darwin ``proc_bsdinfo`` from libproc.h (PROC_PIDTBSDINFO)."""
+
+    _fields_ = [
+        ("pbi_flags", ctypes.c_uint32),
+        ("pbi_status", ctypes.c_uint32),
+        ("pbi_xstatus", ctypes.c_uint32),
+        ("pbi_pid", ctypes.c_uint32),
+        ("pbi_ppid", ctypes.c_uint32),
+        ("pbi_uid", ctypes.c_uint32),
+        ("pbi_gid", ctypes.c_uint32),
+        ("pbi_ruid", ctypes.c_uint32),
+        ("pbi_rgid", ctypes.c_uint32),
+        ("pbi_svuid", ctypes.c_uint32),
+        ("pbi_svgid", ctypes.c_uint32),
+        ("rfu_1", ctypes.c_uint32),
+        ("pbi_comm", ctypes.c_char * 16),
+        ("pbi_name", ctypes.c_char * 32),
+        ("pbi_nfiles", ctypes.c_uint32),
+        ("pbi_pgid", ctypes.c_uint32),
+        ("pbi_pjobc", ctypes.c_uint32),
+        ("e_tdev", ctypes.c_uint32),
+        ("e_tpgid", ctypes.c_uint32),
+        ("pbi_nice", ctypes.c_int32),
+        ("pbi_start_tvsec", ctypes.c_uint64),
+        ("pbi_start_tvusec", ctypes.c_uint64),
+    ]
+
+
+def _read_darwin_bsd_identity(pid: int, proc_pidinfo) -> Optional[Dict[str, Any]]:
+    """Read a PID-reuse-safe kernel creation timestamp from ``proc_pidinfo``."""
+    info = _DarwinProcBsdInfo()
+    size = ctypes.sizeof(info)
+    try:
+        returned = int(proc_pidinfo(pid, _PROC_PIDTBSDINFO, 0, ctypes.byref(info), size))
+    except (OSError, TypeError, ValueError):
+        return None
+    seconds = int(info.pbi_start_tvsec)
+    microseconds = int(info.pbi_start_tvusec)
+    parent_pid = int(info.pbi_ppid)
+    if (
+        returned != size
+        or int(info.pbi_pid) != pid
+        or parent_pid <= 0
+        or seconds <= 0
+        or not 0 <= microseconds < 1_000_000
+    ):
+        return None
+    return {
+        "parent_pid": parent_pid,
+        "start_identity": "darwin-proc-bsdinfo:{}:{:06d}".format(seconds, microseconds),
+    }
+
+
+def _list_posix_process_group_members(pgid: int) -> Optional[set[int]]:
+    """Return an exact read-only process-group snapshot or fail closed."""
+    if pgid <= 0:
+        return None
+    try:
+        completed = subprocess.run(
+            ["/bin/ps", "-ax", "-o", "pid=", "-o", "pgid="],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
+            text=True,
+            encoding="ascii",
+            errors="strict",
+            timeout=1.0,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        return None
+    if completed.returncode != 0 or len(completed.stdout) > _MAX_PROBE_OUTPUT_BYTES:
+        return None
+    members = set()
+    for line in completed.stdout.splitlines():
+        fields = line.split()
+        if len(fields) != 2 or not all(field.isascii() and field.isdecimal() for field in fields):
+            return None
+        process_pid, process_group = (int(field) for field in fields)
+        if process_group == pgid:
+            members.add(process_pid)
+    return members
 
 
 class _ProcessTreeOwner:
@@ -33,17 +123,46 @@ class _ProcessTreeOwner:
 class _PosixProcessTreeOwner(_ProcessTreeOwner):
     def __init__(self, process: subprocess.Popen) -> None:
         self._process = process
+        self._leader_pid = int(process.pid)
+        try:
+            self._pgid = int(os.getpgid(self._leader_pid))
+        except OSError as exc:
+            raise OSError("owned session leader identity is unavailable") from exc
+        self._leader_identity = observe_process_identity(self._leader_pid)
+        if self._pgid != self._leader_pid or self._leader_identity is None:
+            raise OSError("owned process is not an identity-bound session leader")
+
+    def _leader_matches(self) -> bool:
+        if self._process.poll() is not None:
+            return False
+        try:
+            current_pgid = int(os.getpgid(self._leader_pid))
+        except OSError:
+            return False
+        return current_pgid == self._pgid and observe_process_identity(self._leader_pid) == self._leader_identity
 
     def terminate(self) -> None:
-        if self._process.poll() is None:
-            os.killpg(self._process.pid, 9)
+        if self._process.poll() is not None:
+            return
+        if not self._leader_matches():
+            raise OSError("owned session leader identity changed before cleanup")
+        os.killpg(self._pgid, signal.SIGKILL)
 
     def wait_empty(self, timeout: float) -> bool:
+        deadline = time.monotonic() + max(0.0, timeout)
         try:
-            self._process.wait(timeout=max(0.0, timeout))
+            self._process.wait(timeout=max(0.0, deadline - time.monotonic()))
         except (OSError, subprocess.TimeoutExpired):
             return False
-        return True
+        while True:
+            members = _list_posix_process_group_members(self._pgid)
+            if members is None:
+                return False
+            if not members:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.01)
 
 
 class _WindowsProcessTreeOwner(_ProcessTreeOwner):
@@ -240,7 +359,20 @@ def _start_owned_process(command: Sequence[str], *, env: Optional[Dict[str, str]
     }
     if os.name == "posix":
         process = subprocess.Popen(list(command), start_new_session=True, **kwargs)
-        return process, _PosixProcessTreeOwner(process)
+        try:
+            return process, _PosixProcessTreeOwner(process)
+        except BaseException:
+            try:
+                if process.poll() is None and os.getpgid(process.pid) == process.pid:
+                    os.killpg(process.pid, signal.SIGKILL)
+            except OSError:
+                if process.poll() is None:
+                    process.kill()
+            try:
+                process.wait(timeout=3.0)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            raise
     if os.name == "nt":
         owner = _WindowsProcessTreeOwner()
         process = None
@@ -591,30 +723,36 @@ def observe_process_identity(pid: int) -> Optional[Dict[str, Any]]:
         finally:
             kernel32.CloseHandle(handle)
     if sys.platform == "darwin":
-        import ctypes
-
         buffer = ctypes.create_string_buffer(4096)
         try:
-            libproc = ctypes.CDLL("/usr/lib/libproc.dylib")
+            libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+            libproc.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_uint32]
+            libproc.proc_pidpath.restype = ctypes.c_int
+            libproc.proc_pidinfo.argtypes = [
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_uint64,
+                ctypes.c_void_p,
+                ctypes.c_int,
+            ]
+            libproc.proc_pidinfo.restype = ctypes.c_int
             length = int(libproc.proc_pidpath(pid, buffer, len(buffer)))
         except (OSError, AttributeError):
             return None
         if length <= 0:
             return None
-        started = run_bounded_command(["ps", "-p", str(pid), "-o", "ppid=", "-o", "lstart="], timeout=3.0)
-        identity_text = str(started.get("stdout") or "").strip()
-        try:
-            parent_text, start_text = identity_text.split(maxsplit=1)
-            parent_pid = int(parent_text)
-        except (TypeError, ValueError):
+        bsd_identity = _read_darwin_bsd_identity(pid, libproc.proc_pidinfo)
+        if bsd_identity is None:
             return None
-        if not started.get("success") or not start_text or parent_pid <= 0:
+        try:
+            executable = str(Path(buffer.value.decode("utf-8", errors="strict")).resolve())
+        except (UnicodeError, ValueError):
             return None
         return {
             "pid": pid,
-            "parent_pid": parent_pid,
-            "executable": str(Path(buffer.value.decode("utf-8", errors="strict")).resolve()),
-            "start_identity": "darwin-lstart:" + start_text,
+            "parent_pid": bsd_identity["parent_pid"],
+            "executable": executable,
+            "start_identity": bsd_identity["start_identity"],
         }
     try:
         executable = Path("/proc/{}/exe".format(pid)).resolve(strict=True)

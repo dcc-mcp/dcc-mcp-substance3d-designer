@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import base64
+import ctypes
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -328,6 +330,75 @@ def test_process_cleanup_fails_closed_when_tree_does_not_become_empty() -> None:
     assert _install_process._cleanup_owned_process(process, owner) is False
 
 
+def test_darwin_process_identity_distinguishes_same_second_microsecond_reuse() -> None:
+    assert ctypes.sizeof(_install_process._DarwinProcBsdInfo) == 136
+    observations = iter((123_456, 123_457))
+
+    def fake_proc_pidinfo(pid, flavor, arg, buffer, size):
+        assert pid == 9123
+        assert flavor == _install_process._PROC_PIDTBSDINFO
+        assert arg == 0
+        info = _install_process._DarwinProcBsdInfo()
+        info.pbi_pid = pid
+        info.pbi_ppid = 42
+        info.pbi_start_tvsec = 1_777_000_000
+        info.pbi_start_tvusec = next(observations)
+        assert size == ctypes.sizeof(info)
+        ctypes.memmove(buffer, ctypes.byref(info), size)
+        return size
+
+    first = _install_process._read_darwin_bsd_identity(9123, fake_proc_pidinfo)
+    second = _install_process._read_darwin_bsd_identity(9123, fake_proc_pidinfo)
+
+    assert first == {
+        "parent_pid": 42,
+        "start_identity": "darwin-proc-bsdinfo:1777000000:123456",
+    }
+    assert second == {
+        "parent_pid": 42,
+        "start_identity": "darwin-proc-bsdinfo:1777000000:123457",
+    }
+    assert first != second
+
+
+@pytest.mark.parametrize(
+    ("returned_size", "observed_pid", "parent_pid", "seconds", "microseconds"),
+    [
+        (0, 9123, 42, 1_777_000_000, 123_456),
+        (None, 9999, 42, 1_777_000_000, 123_456),
+        (None, 9123, 0, 1_777_000_000, 123_456),
+        (None, 9123, 42, 0, 123_456),
+        (None, 9123, 42, 1_777_000_000, 1_000_000),
+    ],
+)
+def test_darwin_process_identity_fails_closed_on_invalid_kernel_record(
+    returned_size: int | None,
+    observed_pid: int,
+    parent_pid: int,
+    seconds: int,
+    microseconds: int,
+) -> None:
+    def fake_proc_pidinfo(pid, _flavor, _arg, buffer, size):
+        info = _install_process._DarwinProcBsdInfo()
+        info.pbi_pid = observed_pid
+        info.pbi_ppid = parent_pid
+        info.pbi_start_tvsec = seconds
+        info.pbi_start_tvusec = microseconds
+        ctypes.memmove(buffer, ctypes.byref(info), size)
+        return size if returned_size is None else returned_size
+
+    assert _install_process._read_darwin_bsd_identity(9123, fake_proc_pidinfo) is None
+
+
+def test_posix_owner_wait_empty_rejects_a_surviving_group_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    owner = object.__new__(_install_process._PosixProcessTreeOwner)
+    owner._process = SimpleNamespace(wait=lambda timeout: 0)
+    owner._pgid = 9123
+    monkeypatch.setattr(_install_process, "_list_posix_process_group_members", lambda _pgid: {9912})
+
+    assert owner.wait_empty(0.0) is False
+
+
 def test_listener_observation_binds_an_exact_direct_child_process() -> None:
     script = (
         "import socket,time; "
@@ -472,6 +543,99 @@ def test_owned_supervisor_cleans_replacement_after_command_root_exits(tmp_path: 
         time.sleep(0.02)
     assert not _pid_alive(replacement["pid"])
     assert _install_process.observe_listener_identity(f"http://127.0.0.1:{replacement['port']}/mcp") is None
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX session/process-group contract")
+def test_owned_supervisor_cleans_live_tree_when_controller_is_sigkilled(tmp_path: Path) -> None:
+    """A killed caller must not strand a still-running supervised process tree."""
+    controller_ready = tmp_path / "controller.json"
+    descendant_ready = tmp_path / "descendant.json"
+    supervisor_root = tmp_path / "supervisor"
+    source_root = Path(__file__).resolve().parents[1] / "src"
+    helper_python = Path(sys.executable).absolute()
+    descendant_code = (
+        "import json,os,pathlib,sys,time; "
+        "pathlib.Path(sys.argv[1]).write_text(json.dumps({'pid':os.getpid()}),encoding='utf-8'); "
+        "time.sleep(60)"
+    )
+    root_code = (
+        "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2]]); time.sleep(60)"
+    )
+    controller_code = (
+        "import json,os,pathlib,sys,time; "
+        "from dcc_mcp_substance3d_designer import _install_process; "
+        "process,owner=_install_process._start_owned_supervised_process("
+        "[sys.argv[1],'-c',sys.argv[2],sys.argv[3],sys.argv[4]],"
+        "env=os.environ.copy(),cwd=pathlib.Path(sys.argv[5]),root=pathlib.Path(sys.argv[6])); "
+        "pathlib.Path(sys.argv[7]).write_text(json.dumps("
+        "{'pid':os.getpid(),'supervisor_pid':process.supervisor_pid,'root_pid':process.pid}),encoding='utf-8'); "
+        "time.sleep(60)"
+    )
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(source_root)
+    controller = subprocess.Popen(
+        [
+            str(helper_python),
+            "-c",
+            controller_code,
+            str(helper_python),
+            root_code,
+            descendant_code,
+            str(descendant_ready),
+            str(tmp_path),
+            str(supervisor_root),
+            str(controller_ready),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+        env=environment,
+        cwd=tmp_path,
+    )
+    expected = {}
+    try:
+        deadline = time.monotonic() + 8.0
+        while time.monotonic() < deadline and not (controller_ready.is_file() and descendant_ready.is_file()):
+            assert controller.poll() is None
+            time.sleep(0.02)
+        assert controller_ready.is_file()
+        assert descendant_ready.is_file()
+        tree = json.loads(controller_ready.read_text(encoding="utf-8"))
+        descendant = json.loads(descendant_ready.read_text(encoding="utf-8"))
+        pids = {
+            "controller": int(tree["pid"]),
+            "supervisor": int(tree["supervisor_pid"]),
+            "root": int(tree["root_pid"]),
+            "descendant": int(descendant["pid"]),
+        }
+        assert pids["controller"] == controller.pid
+        expected = {name: _install_process.observe_process_identity(pid) for name, pid in pids.items()}
+        assert all(identity is not None for identity in expected.values())
+        assert expected["supervisor"]["parent_pid"] == pids["controller"]
+        assert expected["root"]["parent_pid"] == pids["supervisor"]
+        assert expected["descendant"]["parent_pid"] == pids["root"]
+
+        os.kill(controller.pid, signal.SIGKILL)
+        controller.wait(timeout=3.0)
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and any(_pid_alive(pid) for pid in pids.values()):
+            time.sleep(0.02)
+        assert all(not _pid_alive(pid) for pid in pids.values())
+    finally:
+        if controller.poll() is None:
+            controller.kill()
+        try:
+            controller.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            pass
+        for name in ("descendant", "root", "supervisor"):
+            identity = expected.get(name)
+            if identity is None:
+                continue
+            current = _install_process.observe_process_identity(int(identity["pid"]))
+            if current == identity:
+                os.kill(int(identity["pid"]), signal.SIGKILL)
 
 
 def test_probe_temp_cleanup_retries_a_transient_file_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

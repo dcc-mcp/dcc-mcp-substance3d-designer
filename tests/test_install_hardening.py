@@ -774,7 +774,7 @@ def test_posix_owner_live_match_survives_exec_and_parent_reobservation(monkeypat
     assert owner._leader_matches() is False
 
 
-def test_posix_owner_terminates_identity_matched_members_before_session_leader(
+def test_darwin_owner_terminates_an_identity_matched_original_group(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     owner = object.__new__(_install_process._PosixProcessTreeOwner)
@@ -791,6 +791,7 @@ def test_posix_owner_terminates_identity_matched_members_before_session_leader(
         )
     )
     signals = []
+    monkeypatch.setattr(_install_process.sys, "platform", "darwin")
     monkeypatch.setattr(owner, "_leader_matches", lambda: True)
     monkeypatch.setattr(
         _install_process,
@@ -802,17 +803,23 @@ def test_posix_owner_terminates_identity_matched_members_before_session_leader(
         "observe_process_identity",
         lambda pid: next(descendant_observations) if pid == 9912 else owner._leader_identity.copy(),
     )
-    monkeypatch.setattr(_install_process.os, "getsid", lambda pid: 9123, raising=False)
-    monkeypatch.setattr(_install_process.os, "kill", lambda pid, sig: signals.append((pid, sig)))
+    monkeypatch.setattr(_install_process.os, "getsid", lambda _pid: 9123, raising=False)
+    monkeypatch.setattr(_install_process.os, "getpgid", lambda _pid: 9123, raising=False)
+    monkeypatch.setattr(_install_process.os, "killpg", lambda pgid, sig: signals.append((pgid, sig)), raising=False)
+    monkeypatch.setattr(
+        _install_process.os,
+        "kill",
+        lambda _pid, _sig: pytest.fail("Darwin original-group cleanup must not signal numeric member PIDs"),
+    )
     monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
     monkeypatch.setattr(_install_process.time, "sleep", lambda _delay: None)
 
     owner.terminate(deadline=101.0)
 
-    assert signals == [(9912, _install_process._POSIX_SIGKILL), (9123, _install_process._POSIX_SIGKILL)]
+    assert signals == [(9123, _install_process._POSIX_SIGKILL)]
 
 
-def test_posix_owner_never_signals_a_member_whose_identity_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_darwin_owner_never_signals_a_member_whose_identity_changes(monkeypatch: pytest.MonkeyPatch) -> None:
     owner = object.__new__(_install_process._PosixProcessTreeOwner)
     owner._process = SimpleNamespace(poll=lambda: None)
     owner._leader_pid = 9123
@@ -826,6 +833,7 @@ def test_posix_owner_never_signals_a_member_whose_identity_changes(monkeypatch: 
         )
     )
     signals = []
+    monkeypatch.setattr(_install_process.sys, "platform", "darwin")
     monkeypatch.setattr(owner, "_leader_matches", lambda: True)
     monkeypatch.setattr(
         _install_process,
@@ -837,8 +845,9 @@ def test_posix_owner_never_signals_a_member_whose_identity_changes(monkeypatch: 
         "observe_process_identity",
         lambda pid: next(observations) if pid == 9912 else owner._leader_identity.copy(),
     )
-    monkeypatch.setattr(_install_process.os, "getsid", lambda pid: 9123, raising=False)
-    monkeypatch.setattr(_install_process.os, "kill", lambda pid, sig: signals.append((pid, sig)))
+    monkeypatch.setattr(_install_process.os, "getsid", lambda _pid: 9123, raising=False)
+    monkeypatch.setattr(_install_process.os, "getpgid", lambda _pid: 9123, raising=False)
+    monkeypatch.setattr(_install_process.os, "killpg", lambda pgid, sig: signals.append((pgid, sig)), raising=False)
     monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
 
     with pytest.raises(OSError, match="identity changed"):
@@ -847,7 +856,7 @@ def test_posix_owner_never_signals_a_member_whose_identity_changes(monkeypatch: 
     assert signals == []
 
 
-def test_posix_owner_retries_when_a_snapshotted_member_exits_before_identity_capture(
+def test_darwin_owner_fails_closed_before_signaling_a_changed_group_without_a_stable_handle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     owner = object.__new__(_install_process._PosixProcessTreeOwner)
@@ -856,8 +865,94 @@ def test_posix_owner_retries_when_a_snapshotted_member_exits_before_identity_cap
     owner._pgid = 9123
     owner._sid = 9123
     owner._leader_identity = {"pid": 9123, "start_identity": "leader:1"}
-    snapshots = iter(({9123, 9912}, {9123}))
+    snapshots = iter(({9123, 9912},))
     signals = []
+    monkeypatch.setattr(_install_process.sys, "platform", "darwin")
+    monkeypatch.setattr(owner, "_leader_matches", lambda: True)
+    monkeypatch.setattr(
+        _install_process,
+        "_list_posix_process_group_members",
+        lambda _pgid, *, sid, deadline: next(snapshots),
+    )
+    monkeypatch.setattr(
+        _install_process,
+        "observe_process_identity",
+        lambda pid: {"pid": pid, "start_identity": "descendant:1"},
+    )
+    monkeypatch.setattr(_install_process.os, "getsid", lambda _pid: 9123, raising=False)
+    monkeypatch.setattr(_install_process.os, "getpgid", lambda pid: pid, raising=False)
+    monkeypatch.setattr(_install_process.os, "killpg", lambda pgid, sig: signals.append((pgid, sig)), raising=False)
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_install_process.time, "sleep", lambda _delay: None)
+
+    with pytest.raises(OSError, match="stable process handle"):
+        owner.terminate(deadline=101.0)
+
+    assert signals == []
+
+
+def test_linux_owner_never_numeric_signals_after_identity_recapture(monkeypatch: pytest.MonkeyPatch) -> None:
+    process = SimpleNamespace(pid=9123, poll=lambda: None)
+    snapshots = iter(({9123, 9912}, {9123}))
+    token_signals = []
+    numeric_signals = []
+    closed_tokens = []
+    identities = {
+        9123: {"pid": 9123, "start_identity": "leader:1"},
+        9912: {"pid": 9912, "start_identity": "descendant:1"},
+    }
+    monkeypatch.setattr(_install_process.sys, "platform", "linux")
+    monkeypatch.setattr(_install_process.os, "getpgid", lambda pid: pid, raising=False)
+    monkeypatch.setattr(_install_process.os, "getsid", lambda _pid: 9123, raising=False)
+    monkeypatch.setattr(_install_process, "observe_process_identity", lambda pid: identities[pid].copy())
+    monkeypatch.setattr(
+        _install_process,
+        "_list_posix_process_group_members",
+        lambda _pgid, *, sid, deadline: next(snapshots),
+    )
+    monkeypatch.setattr(
+        _install_process.os,
+        "pidfd_open",
+        lambda pid, _flags=0: {9912: 41, 9123: 42}[pid],
+        raising=False,
+    )
+    monkeypatch.setattr(
+        _install_process.signal,
+        "pidfd_send_signal",
+        lambda pidfd, sig, _siginfo=None, _flags=0: token_signals.append((pidfd, sig)),
+        raising=False,
+    )
+    monkeypatch.setattr(_install_process.os, "kill", lambda pid, sig: numeric_signals.append((pid, sig)))
+    monkeypatch.setattr(_install_process.os, "close", lambda pidfd: closed_tokens.append(pidfd))
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_install_process.time, "sleep", lambda _delay: None)
+
+    owner = _install_process._PosixProcessTreeOwner(process)
+    try:
+        owner.terminate(deadline=101.0)
+    finally:
+        owner.close()
+
+    assert numeric_signals == []
+    assert token_signals == [
+        (41, _install_process._POSIX_SIGKILL),
+        (42, _install_process._POSIX_SIGKILL),
+    ]
+    assert closed_tokens == [41, 42]
+
+
+def test_darwin_owner_retries_when_a_snapshotted_member_exits_before_identity_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = object.__new__(_install_process._PosixProcessTreeOwner)
+    owner._process = SimpleNamespace(poll=lambda: None)
+    owner._leader_pid = 9123
+    owner._pgid = 9123
+    owner._sid = 9123
+    owner._leader_identity = {"pid": 9123, "start_identity": "leader:1"}
+    snapshots = iter(({9123, 9912},))
+    signals = []
+    monkeypatch.setattr(_install_process.sys, "platform", "darwin")
     monkeypatch.setattr(owner, "_leader_matches", lambda: True)
     monkeypatch.setattr(
         _install_process,
@@ -869,7 +964,7 @@ def test_posix_owner_retries_when_a_snapshotted_member_exits_before_identity_cap
         "observe_process_identity",
         lambda pid: None if pid == 9912 else owner._leader_identity.copy(),
     )
-    monkeypatch.setattr(_install_process.os, "kill", lambda pid, sig: signals.append((pid, sig)))
+    monkeypatch.setattr(_install_process.os, "killpg", lambda pgid, sig: signals.append((pgid, sig)), raising=False)
     monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
     monkeypatch.setattr(_install_process.time, "sleep", lambda _delay: None)
 
@@ -878,19 +973,15 @@ def test_posix_owner_retries_when_a_snapshotted_member_exits_before_identity_cap
     assert signals == [(9123, _install_process._POSIX_SIGKILL)]
 
 
-def test_parent_death_cleanup_signals_changed_groups_before_the_original_group(
+def test_darwin_parent_death_cleanup_fails_closed_before_changed_group_signaling(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class SupervisorTerminated(Exception):
-        pass
-
     group_signals = []
 
     def kill_group(pgid: int, sig: int) -> None:
         group_signals.append((pgid, sig))
-        if pgid == 9123:
-            raise SupervisorTerminated
 
+    monkeypatch.setattr(_probe_supervisor.sys, "platform", "darwin")
     monkeypatch.setattr(_probe_supervisor.time, "monotonic", lambda: 100.0)
     monkeypatch.setattr(_probe_supervisor.os, "getpid", lambda: 9123)
     monkeypatch.setattr(_probe_supervisor.os, "getpgrp", lambda: 9123, raising=False)
@@ -908,13 +999,166 @@ def test_parent_death_cleanup_signals_changed_groups_before_the_original_group(
         lambda _pid, _sig: pytest.fail("parent-death cleanup must signal complete process groups"),
     )
 
+    assert _probe_supervisor._terminate_owned_session(9123, 9123, None) is False
+
+    assert group_signals == []
+
+
+def test_darwin_parent_death_cleanup_preserves_original_group_termination(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SupervisorTerminated(Exception):
+        pass
+
+    group_signals = []
+
+    def kill_group(pgid: int, sig: int) -> None:
+        group_signals.append((pgid, sig))
+        raise SupervisorTerminated
+
+    monkeypatch.setattr(_probe_supervisor.sys, "platform", "darwin")
+    monkeypatch.setattr(_probe_supervisor.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_probe_supervisor.os, "getpid", lambda: 9123)
+    monkeypatch.setattr(_probe_supervisor.os, "getpgrp", lambda: 9123, raising=False)
+    monkeypatch.setattr(_probe_supervisor.os, "getsid", lambda _pid: 9123, raising=False)
+    monkeypatch.setattr(
+        _probe_supervisor,
+        "_owned_session_members",
+        lambda _pgid, _sid, _deadline: {9123: 9123, 9912: 9123},
+    )
+    monkeypatch.setattr(_probe_supervisor.os, "killpg", kill_group, raising=False)
+
     with pytest.raises(SupervisorTerminated):
         _probe_supervisor._terminate_owned_session(9123, 9123, None)
 
-    assert group_signals == [
-        (9912, _probe_supervisor._POSIX_SIGKILL),
-        (9123, _probe_supervisor._POSIX_SIGKILL),
+    assert group_signals == [(9123, _probe_supervisor._POSIX_SIGKILL)]
+
+
+def test_linux_parent_death_cleanup_uses_tokens_instead_of_numeric_process_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SupervisorTerminated(Exception):
+        pass
+
+    group_signals = []
+    token_signals = []
+    closed_tokens = []
+    monkeypatch.setattr(_probe_supervisor.sys, "platform", "linux")
+    monkeypatch.setattr(_probe_supervisor.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_probe_supervisor.os, "getpid", lambda: 9123)
+    monkeypatch.setattr(_probe_supervisor.os, "getpgrp", lambda: 9123, raising=False)
+    monkeypatch.setattr(_probe_supervisor.os, "getsid", lambda _pid: 9123, raising=False)
+    monkeypatch.setattr(_probe_supervisor.os, "getpgid", lambda pid: pid, raising=False)
+    monkeypatch.setattr(
+        _probe_supervisor,
+        "_owned_session_members",
+        lambda _pgid, _sid, _deadline: {
+            9123: {"pid": 9123, "pgid": 9123, "sid": 9123, "start_identity": "leader:1"},
+            9912: {"pid": 9912, "pgid": 9912, "sid": 9123, "start_identity": "descendant:1"},
+        },
+    )
+    monkeypatch.setattr(
+        _probe_supervisor,
+        "_read_linux_process_identity",
+        lambda pid: {
+            9123: {"pid": 9123, "pgid": 9123, "sid": 9123, "start_identity": "leader:1"},
+            9912: {"pid": 9912, "pgid": 9912, "sid": 9123, "start_identity": "descendant:1"},
+        }[pid],
+    )
+    monkeypatch.setattr(
+        _probe_supervisor.os,
+        "pidfd_open",
+        lambda pid, _flags=0: {9912: 41, 9123: 42}[pid],
+        raising=False,
+    )
+
+    def send_token(pidfd: int, sig: int, _siginfo=None, _flags: int = 0) -> None:
+        token_signals.append((pidfd, sig))
+        if pidfd == 42:
+            raise SupervisorTerminated
+
+    monkeypatch.setattr(_probe_supervisor.signal, "pidfd_send_signal", send_token, raising=False)
+    monkeypatch.setattr(_probe_supervisor.os, "close", lambda pidfd: closed_tokens.append(pidfd))
+    monkeypatch.setattr(
+        _probe_supervisor.os,
+        "killpg",
+        lambda pgid, sig: group_signals.append((pgid, sig)),
+        raising=False,
+    )
+
+    with pytest.raises(SupervisorTerminated):
+        _probe_supervisor._terminate_owned_session(9123, 9123, None)
+
+    assert group_signals == []
+    assert token_signals == [
+        (41, _probe_supervisor._POSIX_SIGKILL),
+        (42, _probe_supervisor._POSIX_SIGKILL),
     ]
+    assert closed_tokens == [42, 41]
+
+
+def test_linux_parent_death_cleanup_never_token_signals_a_member_reused_after_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SupervisorTerminated(Exception):
+        pass
+
+    identities = {
+        9123: iter(
+            (
+                {"pid": 9123, "pgid": 9123, "sid": 9123, "start_identity": "leader:1"},
+                {"pid": 9123, "pgid": 9123, "sid": 9123, "start_identity": "leader:1"},
+            )
+        ),
+        9912: iter(
+            (
+                {"pid": 9912, "pgid": 9912, "sid": 9123, "start_identity": "owned:1"},
+                {"pid": 9912, "pgid": 9912, "sid": 9123, "start_identity": "foreign:2"},
+            )
+        ),
+    }
+    completed = SimpleNamespace(returncode=0, stdout="9123 9123 9123\n9912 9912 9123\n")
+    token_signals = []
+    closed_tokens = []
+    monkeypatch.setattr(_probe_supervisor.sys, "platform", "linux")
+    monkeypatch.setattr(_probe_supervisor.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_probe_supervisor.subprocess, "run", lambda *_args, **_kwargs: completed)
+    monkeypatch.setattr(_probe_supervisor.os, "getpid", lambda: 9123)
+    monkeypatch.setattr(_probe_supervisor.os, "getpgrp", lambda: 9123, raising=False)
+    monkeypatch.setattr(_probe_supervisor.os, "getsid", lambda _pid: 9123, raising=False)
+    monkeypatch.setattr(_probe_supervisor.os, "getpgid", lambda pid: pid, raising=False)
+    monkeypatch.setattr(
+        _probe_supervisor,
+        "_read_linux_process_identity",
+        lambda pid: next(identities[pid]),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        _probe_supervisor.os,
+        "pidfd_open",
+        lambda pid, _flags=0: {9912: 41, 9123: 42}[pid],
+        raising=False,
+    )
+
+    def send_token(pidfd: int, sig: int, _siginfo=None, _flags: int = 0) -> None:
+        token_signals.append((pidfd, sig))
+        if pidfd == 42:
+            raise SupervisorTerminated
+
+    monkeypatch.setattr(_probe_supervisor.signal, "pidfd_send_signal", send_token, raising=False)
+    monkeypatch.setattr(_probe_supervisor.os, "close", lambda pidfd: closed_tokens.append(pidfd))
+    monkeypatch.setattr(
+        _probe_supervisor.os,
+        "killpg",
+        lambda _pgid, _sig: pytest.fail("Linux parent-death cleanup must not use numeric process groups"),
+        raising=False,
+    )
+
+    with pytest.raises(SupervisorTerminated):
+        _probe_supervisor._terminate_owned_session(9123, 9123, None)
+
+    assert token_signals == [(42, _probe_supervisor._POSIX_SIGKILL)]
+    assert set(closed_tokens) == {41, 42}
 
 
 def test_posix_group_snapshot_accepts_bsd_ps_empty_heading(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1230,7 +1474,8 @@ def test_bounded_probe_cleans_descendant_that_changes_process_group(tmp_path: Pa
         assert child["pgid"] == child["pid"]
         assert child["sid"] == child["expected_sid"]
         assert child["pgid"] != child["sid"]
-        assert result["success"] is True, result
+        assert result["success"] is False, result
+        assert result["reason"] == "probe left owned descendants"
         deadline = time.monotonic() + 3.0
         while time.monotonic() < deadline and _pid_alive(child["pid"]):
             time.sleep(0.02)

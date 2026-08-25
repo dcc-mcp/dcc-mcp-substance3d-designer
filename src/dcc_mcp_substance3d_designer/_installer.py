@@ -6,33 +6,31 @@ import json
 import os
 import shlex
 import shutil
+import threading
 import time
 import uuid
+import warnings
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterator, Mapping, Optional, Sequence, Tuple
 
 import dcc_mcp_core
-from dcc_mcp_core import (
-    inspect_install_root,
-    safe_remove_tree,
-    safe_replace_tree,
-)
-
-from dcc_mcp_substance3d_designer.__version__ import __version__
-from dcc_mcp_substance3d_designer._install_contract import (
+from dcc_mcp_core.deployment import (
     INSTALL_EXIT_INSTALL,
     INSTALL_EXIT_OK,
     INSTALL_EXIT_PREFLIGHT,
     INSTALL_EXIT_REQUIRES_RESTART,
     INSTALL_EXIT_VERIFY,
     INSTALL_SOP_SCHEMA_VERSION,
+    inspect_install_root,
+    safe_remove_tree,
+    safe_replace_tree,
 )
+
+from dcc_mcp_substance3d_designer.__version__ import __version__
 from dcc_mcp_substance3d_designer._install_io import (
     hash_file as _hash_file,
-)
-from dcc_mcp_substance3d_designer._install_io import (
-    load_json as _load_json,
 )
 from dcc_mcp_substance3d_designer._install_io import (
     write_bytes_atomic as _write_bytes_atomic,
@@ -52,7 +50,65 @@ from dcc_mcp_substance3d_designer._install_model import (
     PLUGIN_NAME as _PLUGIN_NAME,
 )
 from dcc_mcp_substance3d_designer._install_preflight import resolve_context as _resolve_context
+from dcc_mcp_substance3d_designer._install_receipt import load_and_validate_receipt as _validate_receipt
 from dcc_mcp_substance3d_designer._install_verify import verify as _verify
+
+_LOCK_GUARD = threading.Lock()
+_LOCKED_ROOTS: set[str] = set()
+
+
+@contextmanager
+def _install_lock(install_root: Path) -> Iterator[None]:
+    """Own one install-root mutation in-process and across processes."""
+    key = os.path.normcase(str(install_root.resolve()))
+    lock_path = install_root / "locks" / f"{DCC_TYPE}.lock"
+    with _LOCK_GUARD:
+        if key in _LOCKED_ROOTS:
+            raise LifecycleFailure(
+                "busy", "A Designer lifecycle mutation is already in progress.", INSTALL_EXIT_INSTALL
+            )
+        _LOCKED_ROOTS.add(key)
+    descriptor: Optional[int] = None
+    identity: Optional[Tuple[int, int]] = None
+    active_failure: Optional[BaseException] = None
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            descriptor = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError as exc:
+            raise LifecycleFailure(
+                "busy", "A Designer lifecycle mutation is already in progress.", INSTALL_EXIT_INSTALL
+            ) from exc
+        os.write(descriptor, f"pid={os.getpid()}\n".encode("ascii"))
+        stat = os.fstat(descriptor)
+        identity = (int(stat.st_dev), int(stat.st_ino))
+        yield
+    except BaseException as exc:
+        active_failure = exc
+        raise
+    finally:
+        release_failed = False
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                release_failed = True
+        if identity is not None:
+            try:
+                current = os.stat(lock_path, follow_symlinks=False)
+                if (int(current.st_dev), int(current.st_ino)) == identity:
+                    lock_path.unlink()
+                else:
+                    release_failed = True
+            except OSError:
+                release_failed = True
+        with _LOCK_GUARD:
+            _LOCKED_ROOTS.discard(key)
+        if release_failed:
+            message = "Designer lifecycle lock release failed; manual cleanup is required."
+            if active_failure is None:
+                raise LifecycleFailure("cleanup", message, INSTALL_EXIT_INSTALL)
+            warnings.warn(message, RuntimeWarning, stacklevel=2)
 
 
 def _command(ctx: InstallContext, verb: str, *, execute: bool = False) -> Sequence[str]:
@@ -130,6 +186,18 @@ def _base_result(ctx: InstallContext, *, status: str, verify: Optional[Dict[str,
             "path": str(ctx.python_path),
             "version": ctx.python_version,
             "site_packages": str(ctx.python_root),
+            "adapter_module_path": None if ctx.adapter_module_path is None else str(ctx.adapter_module_path),
+            "core_module_path": None if ctx.core_module_path is None else str(ctx.core_module_path),
+            "adapter_distribution_root": (
+                None if ctx.adapter_distribution_root is None else str(ctx.adapter_distribution_root)
+            ),
+            "core_distribution_root": None if ctx.core_distribution_root is None else str(ctx.core_distribution_root),
+            "python_prefix": None if ctx.python_prefix is None else str(ctx.python_prefix),
+            "server_module_path": None if ctx.server_module_path is None else str(ctx.server_module_path),
+            "server_distribution_root": (
+                None if ctx.server_distribution_root is None else str(ctx.server_distribution_root)
+            ),
+            "server_binary_path": None if ctx.server_binary_path is None else str(ctx.server_binary_path),
         },
         "install_state": ctx.state,
     }
@@ -231,6 +299,18 @@ def _receipt(ctx: InstallContext, installed_at: float) -> Dict[str, Any]:
             "path": str(ctx.python_path),
             "version": ctx.python_version,
             "site_packages": str(ctx.python_root),
+            "adapter_module_path": None if ctx.adapter_module_path is None else str(ctx.adapter_module_path),
+            "core_module_path": None if ctx.core_module_path is None else str(ctx.core_module_path),
+            "adapter_distribution_root": (
+                None if ctx.adapter_distribution_root is None else str(ctx.adapter_distribution_root)
+            ),
+            "core_distribution_root": None if ctx.core_distribution_root is None else str(ctx.core_distribution_root),
+            "python_prefix": None if ctx.python_prefix is None else str(ctx.python_prefix),
+            "server_module_path": None if ctx.server_module_path is None else str(ctx.server_module_path),
+            "server_distribution_root": (
+                None if ctx.server_distribution_root is None else str(ctx.server_distribution_root)
+            ),
+            "server_binary_path": None if ctx.server_binary_path is None else str(ctx.server_binary_path),
         },
         "files": [{"path": str(path), "sha256": _hash_file(path)} for path in (ctx.plugin_path, ctx.launcher_path)],
         "installed_at": datetime.fromtimestamp(installed_at, timezone.utc).isoformat(),
@@ -239,24 +319,46 @@ def _receipt(ctx: InstallContext, installed_at: float) -> Dict[str, Any]:
     }
 
 
-def _rollback_path(current: Path, backup: Path) -> None:
-    if current.is_dir():
-        removed = safe_remove_tree(current)
+def _remove_transaction_path(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        removed = safe_remove_tree(path)
         if not removed.get("success"):
-            return
-    elif current.exists():
-        try:
-            current.unlink()
-        except OSError:
-            return
+            raise LifecycleFailure("rollback", "Designer rollback could not remove a managed directory.")
+    elif path.exists() or path.is_symlink():
+        path.unlink()
+
+
+def _rollback_path(current: Path, backup: Path, *, previously_existed: bool) -> None:
     if backup.exists():
-        backup.parent.mkdir(parents=True, exist_ok=True)
+        _remove_transaction_path(current)
+        current.parent.mkdir(parents=True, exist_ok=True)
         os.replace(str(backup), str(current))
+    elif not previously_existed:
+        _remove_transaction_path(current)
+    elif not current.exists():
+        raise LifecycleFailure("rollback", "Designer rollback is missing a prior artifact.")
+
+
+def _rollback_transaction(paths: Sequence[Tuple[Path, Path, bool]]) -> None:
+    failed = False
+    for current, backup, previously_existed in paths:
+        try:
+            _rollback_path(current, backup, previously_existed=previously_existed)
+        except (LifecycleFailure, OSError):
+            failed = True
+    if failed:
+        raise LifecycleFailure("rollback", "Designer rollback could not restore every managed artifact.")
 
 
 def _execute_install(ctx: InstallContext, environ: Mapping[str, str]) -> LifecycleOutcome:
     if ctx.state == "partial":
         raise LifecycleFailure("partial", "Designer adapter files exist without a matching receipt.")
+    if ctx.receipt_path.exists():
+        _validate_receipt(
+            ctx,
+            allow_file_drift=ctx.state == "repair",
+            allow_adapter_mismatch=ctx.state == "upgrade",
+        )
     inspection = inspect_install_root(ctx.payload_root)
     if inspection.get("requires_restart"):
         result = _base_result(ctx, status="requires_restart")
@@ -277,6 +379,16 @@ def _execute_install(ctx: InstallContext, environ: Mapping[str, str]) -> Lifecyc
     backup_payload = transaction / "backup" / "payload"
     backup_launcher = transaction / "backup" / ctx.launcher_path.name
     backup_receipt = transaction / "backup" / ctx.receipt_path.name
+    previous_payload = ctx.payload_root.exists()
+    previous_launcher = ctx.launcher_path.exists()
+    previous_receipt = ctx.receipt_path.exists()
+    rollback_paths = (
+        (ctx.payload_root, backup_payload, previous_payload),
+        (ctx.launcher_path, backup_launcher, previous_launcher),
+        (ctx.receipt_path, backup_receipt, previous_receipt),
+    )
+    verify: Optional[Dict[str, Any]] = None
+    next_steps: Sequence[Dict[str, Any]] = []
     staged_plugin.parent.mkdir(parents=True)
     staged_plugin.write_text(_plugin_source(ctx), encoding="utf-8")
     installed_at = time.time()
@@ -291,21 +403,32 @@ def _execute_install(ctx: InstallContext, environ: Mapping[str, str]) -> Lifecyc
         replaced = safe_replace_tree(staged_payload, ctx.payload_root)
         if not replaced.get("success"):
             exit_code = INSTALL_EXIT_REQUIRES_RESTART if replaced.get("requires_restart") else INSTALL_EXIT_INSTALL
-            raise LifecycleFailure("install", str(replaced.get("message")), exit_code)
+            raise LifecycleFailure("install", "Designer payload could not be replaced safely.", exit_code)
         _write_bytes_atomic(ctx.launcher_path, _launcher_payload(ctx), 0o700)
         _write_json_atomic(ctx.receipt_path, _receipt(ctx, installed_at))
+        verify, next_steps = _verify(ctx, environ)
+        if ctx.state in {"current", "upgrade"} and not verify["directly_usable"]:
+            _rollback_transaction(rollback_paths)
+            result = _base_result(ctx, status="partial", verify=verify)
+            result["previous_restored"] = True
+            result["steps"] = [
+                {"id": "preflight", "status": "ok"},
+                {"id": "install-launcher", "status": "rolled_back"},
+                {"id": "receipt", "status": "restored"},
+                {"id": "verify", "status": "failed"},
+            ]
+            result["next_steps"] = list(next_steps)
+            return LifecycleOutcome(result, INSTALL_EXIT_VERIFY)
     except BaseException:
-        _rollback_path(ctx.payload_root, backup_payload)
-        _rollback_path(ctx.launcher_path, backup_launcher)
-        if backup_receipt.exists():
-            ctx.receipt_path.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(str(backup_receipt), str(ctx.receipt_path))
-        elif ctx.receipt_path.exists():
-            ctx.receipt_path.unlink()
+        _rollback_transaction(rollback_paths)
         raise
     finally:
-        safe_remove_tree(transaction)
-    verify, next_steps = _verify(ctx, environ)
+        if transaction.exists():
+            cleaned = safe_remove_tree(transaction)
+            if not cleaned.get("success"):
+                raise LifecycleFailure("cleanup", "Designer staging cleanup did not complete.", INSTALL_EXIT_INSTALL)
+    if verify is None:
+        raise LifecycleFailure("install", "Designer install verification did not run.", INSTALL_EXIT_INSTALL)
     usable = bool(verify["directly_usable"])
     result = _base_result(ctx, status="ok" if usable else "partial", verify=verify)
     result["steps"] = [
@@ -325,37 +448,51 @@ def _execute_uninstall(ctx: InstallContext) -> LifecycleOutcome:
         result = _base_result(ctx, status="ok")
         result["steps"] = [{"id": "uninstall", "status": "already_absent"}]
         return LifecycleOutcome(result, INSTALL_EXIT_OK)
-    receipt = _load_json(ctx.receipt_path)
-    expected_paths = {ctx.plugin_path.resolve(), ctx.launcher_path.resolve()}
-    recorded_paths = {Path(str(item.get("path", ""))).resolve() for item in receipt.get("files", [])}
-    if recorded_paths != expected_paths:
-        raise LifecycleFailure(
-            "receipt", "Receipt ownership does not match Designer adapter paths.", INSTALL_EXIT_INSTALL
-        )
-    for item in receipt["files"]:
-        path = Path(str(item["path"]))
-        if path.exists() and _hash_file(path) != item.get("sha256"):
-            raise LifecycleFailure(
-                "receipt", f"Receipted file was modified; preserving it: {path}", INSTALL_EXIT_INSTALL
-            )
-    removed = safe_remove_tree(ctx.payload_root)
-    if not removed.get("success"):
-        exit_code = INSTALL_EXIT_REQUIRES_RESTART if removed.get("requires_restart") else INSTALL_EXIT_INSTALL
-        result = _base_result(ctx, status="requires_restart" if removed.get("requires_restart") else "failed")
-        result["steps"] = [{"id": "uninstall", "status": result["status"]}]
-        if removed.get("requires_restart"):
-            result["next_steps"] = [
-                {
-                    "id": "retry_uninstall",
-                    "description": "Close Designer and retry the uninstall operation.",
-                    "command": list(_command(ctx, "uninstall", execute=True)),
-                    "why": "Core reported a loaded or locked artifact under the install root.",
-                }
-            ]
-        return LifecycleOutcome(result, exit_code)
-    if ctx.launcher_path.exists():
+    _validate_receipt(ctx, allow_adapter_mismatch=True)
+    transaction = ctx.install_root / "staging" / uuid.uuid4().hex
+    backup_payload = transaction / "backup" / "payload"
+    backup_launcher = transaction / "backup" / ctx.launcher_path.name
+    backup_receipt = transaction / "backup" / ctx.receipt_path.name
+    transaction.mkdir(parents=True, exist_ok=False)
+    payload_removed = False
+    try:
+        backup_payload.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(ctx.payload_root, backup_payload, symlinks=True)
+        shutil.copy2(ctx.launcher_path, backup_launcher)
+        shutil.copy2(ctx.receipt_path, backup_receipt)
+        removed = safe_remove_tree(ctx.payload_root)
+        if not removed.get("success"):
+            exit_code = INSTALL_EXIT_REQUIRES_RESTART if removed.get("requires_restart") else INSTALL_EXIT_INSTALL
+            raise LifecycleFailure("uninstall", "Designer payload could not be removed safely.", exit_code)
+        payload_removed = True
         ctx.launcher_path.unlink()
-    ctx.receipt_path.unlink()
+        ctx.receipt_path.unlink()
+    except BaseException:
+        if not payload_removed:
+            raise
+        failed = False
+        try:
+            if ctx.payload_root.exists():
+                removed = safe_remove_tree(ctx.payload_root)
+                failed = not removed.get("success")
+            if backup_payload.exists() and not ctx.payload_root.exists():
+                shutil.copytree(backup_payload, ctx.payload_root, symlinks=True)
+            for backup, target in ((backup_launcher, ctx.launcher_path), (backup_receipt, ctx.receipt_path)):
+                if backup.exists():
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(backup, target)
+        except OSError:
+            failed = True
+        if failed:
+            raise LifecycleFailure(
+                "rollback", "Designer uninstall rollback could not restore every artifact."
+            ) from None
+        raise
+    finally:
+        if transaction.exists():
+            cleaned = safe_remove_tree(transaction)
+            if not cleaned.get("success"):
+                raise LifecycleFailure("cleanup", "Designer staging cleanup did not complete.", INSTALL_EXIT_INSTALL)
     result = _base_result(ctx, status="ok")
     result["steps"] = [{"id": "receipt", "status": "consumed"}, {"id": "uninstall", "status": "ok"}]
     return LifecycleOutcome(result, INSTALL_EXIT_OK)
@@ -448,11 +585,15 @@ def run_lifecycle(
         if verb in {"install", "upgrade"}:
             if dry_run or not yes:
                 return _plan(context, verb)
-            return _execute_install(context, resolved_environ)
+            with _install_lock(context.install_root):
+                context = _resolve_context(dcc_path, python_path, resolved_environ)
+                return _execute_install(context, resolved_environ)
         if verb == "uninstall":
             if dry_run or not yes:
                 return _plan(context, verb)
-            return _execute_uninstall(context)
+            with _install_lock(context.install_root):
+                context = _resolve_context(dcc_path, python_path, resolved_environ)
+                return _execute_uninstall(context)
         if verb == "status":
             return _status(context)
         if verb == "verify":
@@ -460,9 +601,9 @@ def run_lifecycle(
         raise LifecycleFailure("verb", f"Lifecycle verb is not implemented yet: {verb}")
     except LifecycleFailure as exc:
         return _failure_result(exc, context, verb)
-    except BaseException as exc:
+    except BaseException:
         return _failure_result(
-            LifecycleFailure("install", f"Lifecycle operation failed: {exc}", INSTALL_EXIT_INSTALL),
+            LifecycleFailure("install", "Designer lifecycle operation failed safely.", INSTALL_EXIT_INSTALL),
             context,
             verb,
         )

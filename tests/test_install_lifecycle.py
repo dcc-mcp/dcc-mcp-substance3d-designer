@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import sys
 import threading
 import time
@@ -13,8 +14,17 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def _trust_synthetic_designer_product(monkeypatch):
+    from dcc_mcp_substance3d_designer import _install_preflight
+
+    monkeypatch.setattr(_install_preflight, "_host_product_identity", lambda _path: True)
+
+
 def _synthetic_designer(tmp_path, version="15.1.0", embedded_python=None):
-    host = tmp_path / f"Adobe Substance 3D Designer {version}.exe"
+    host_root = tmp_path / f"Adobe Substance 3D Designer {version}"
+    host = host_root / ("Adobe Substance 3D Designer.exe" if os.name == "nt" else "Adobe Substance 3D Designer")
+    host.parent.mkdir(parents=True, exist_ok=True)
     host.write_bytes(b"synthetic host")
     python_version = embedded_python or f"{sys.version_info.major}.{sys.version_info.minor}"
     (host.parent / "plugins" / "pythonsdk" / "lib" / f"python{python_version}").mkdir(parents=True)
@@ -75,7 +85,7 @@ def test_install_defaults_to_a_non_mutating_public_plan(tmp_path, monkeypatch, c
                 "--dcc-path",
                 str(host),
                 "--python",
-                str(Path(sys.executable).resolve()),
+                str(Path(sys.executable).absolute()),
                 "--json",
                 "--yes",
             ],
@@ -305,15 +315,18 @@ def test_locked_uninstall_returns_one_machine_executable_retry(tmp_path, monkeyp
     installed = json.loads(capsys.readouterr().out)
     receipt_path = Path(installed["receipt_path"])
 
-    monkeypatch.setattr(
-        _installer,
-        "safe_remove_tree",
-        lambda *_args: {
-            "success": False,
-            "requires_restart": True,
-            "message": "synthetic Windows lock",
-        },
-    )
+    original_safe_remove_tree = _installer.safe_remove_tree
+
+    def locked_payload_only(path):
+        if Path(path).resolve() == (install_root / "payload").resolve():
+            return {
+                "success": False,
+                "requires_restart": True,
+                "message": "synthetic Windows lock",
+            }
+        return original_safe_remove_tree(path)
+
+    monkeypatch.setattr(_installer, "safe_remove_tree", locked_payload_only)
 
     assert main(["uninstall", *common, "--yes"]) == 50
     blocked = json.loads(capsys.readouterr().out)
@@ -329,7 +342,7 @@ def test_locked_uninstall_returns_one_machine_executable_retry(tmp_path, monkeyp
                 "--dcc-path",
                 str(host),
                 "--python",
-                str(Path(sys.executable).resolve()),
+                str(Path(sys.executable).absolute()),
                 "--json",
                 "--yes",
             ],
@@ -353,6 +366,10 @@ def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, mo
     monkeypatch.setenv("DCC_MCP_DISABLE_FILE_LOGGING", "1")
     monkeypatch.setenv("DCC_MCP_DISABLE_JOB_PERSISTENCE", "1")
     monkeypatch.setenv("DCC_MCP_DISABLE_TELEMETRY", "1")
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        gateway_port = reservation.getsockname()[1]
+    monkeypatch.setenv("DCC_MCP_GATEWAY_PORT", str(gateway_port))
 
     color_engine = types.SimpleNamespace(
         getName=lambda: "legacy",
@@ -378,14 +395,34 @@ def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, mo
         types.SimpleNamespace(getContext=lambda: types.SimpleNamespace(getSDApplication=lambda: app)),
     )
 
+    from dcc_mcp_substance3d_designer import _install_preflight
+    from dcc_mcp_substance3d_designer._install_process import observe_process_identity
     from dcc_mcp_substance3d_designer.dispatcher import DesignerQtDispatcher
     from dcc_mcp_substance3d_designer.install_cli import main
-    from dcc_mcp_substance3d_designer.server import SubstanceDesignerMcpServer
+    from dcc_mcp_substance3d_designer.server import start_server, stop_server
+
+    observed_process = observe_process_identity(os.getpid())
+    assert observed_process is not None
+    assert observed_process["pid"] == os.getpid()
+    selected_process = Path(str(observed_process["executable"])).resolve()
+    assert selected_process.is_file()
+    monkeypatch.setattr(_install_preflight, "_resolve_host_path", lambda *_args: selected_process)
+    monkeypatch.setattr(_install_preflight, "_detect_host_version", lambda *_args: ("15.1.0", "test"))
+    monkeypatch.setattr(
+        _install_preflight,
+        "_detect_embedded_python_version",
+        lambda *_args: (f"{sys.version_info.major}.{sys.version_info.minor}", "test"),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "dcc_mcp_substance3d_designer_plugin",
+        types.SimpleNamespace(
+            __file__=str(install_root / "payload" / "plugins" / "dcc_mcp_substance3d_designer_plugin.py")
+        ),
+    )
 
     dispatcher = DesignerQtDispatcher()
-    server = SubstanceDesignerMcpServer(dispatcher, port=0)
-    server.register_builtin_actions()
-    server.start(install_atexit_hook=False)
+    start_server(dispatcher, port=0)
     try:
         common = ["--dcc-path", str(host), "--python", sys.executable, "--json"]
 
@@ -416,7 +453,7 @@ def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, mo
         assert verified["verify"]["directly_usable"] is True
         assert verified["verify"]["probe_tool"] == "designer_diagnostics__ping"
     finally:
-        server.stop()
+        stop_server()
 
 
 def test_packaged_designer_plugin_captures_bootstrap_failures():
@@ -444,7 +481,7 @@ def test_distribution_exposes_the_standard_lifecycle_contract():
 
     assert "[project.scripts]" in pyproject
     assert 'dcc-mcp-substance3d-designer = "dcc_mcp_substance3d_designer.install_cli:main"' in pyproject
-    assert "dcc-mcp-core>=0.20.8,<1.0.0" in pyproject
+    assert "dcc-mcp-core>=0.20.15,<1.0.0" in pyproject
     assert '"src/dcc_mcp_substance3d_designer/designer/**"' in pyproject
     assert '"install.md"' in pyproject
 
@@ -486,7 +523,7 @@ def test_install_runbook_and_ci_publish_the_canonical_contract():
         assert f"dcc-mcp-substance3d-designer {verb}" in runbook
     assert "--config-file" in runbook
     assert "directly_usable" in runbook
-    assert "Core PR #2320" in runbook
+    assert "dcc-mcp-core 0.20.15" in runbook
     assert "[Install SOP](install.md)" in readme
     assert "Install lifecycle smoke" in workflow
     assert "tests/test_install_lifecycle.py" in workflow
@@ -534,7 +571,7 @@ def test_posix_launcher_preserves_existing_paths_when_owned_paths_contain_spaces
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows standard install discovery")
 def test_preflight_discovers_a_single_standard_designer_install(tmp_path, monkeypatch, capsys):
-    host = tmp_path / "Adobe" / "Adobe Substance 3D Designer" / "Adobe Substance 3D Designer.exe"
+    host = tmp_path / "Adobe" / "Adobe Substance 3D Designer 15.1.0" / "Adobe Substance 3D Designer.exe"
     host.parent.mkdir(parents=True)
     host.write_bytes(b"synthetic host")
     (host.parent / "plugins" / "pythonsdk" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}").mkdir(
@@ -548,7 +585,6 @@ def test_preflight_discovers_a_single_standard_designer_install(tmp_path, monkey
     )
     monkeypatch.setenv("ProgramFiles", str(tmp_path))
     monkeypatch.setenv("ProgramW6432", str(tmp_path))
-    monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_VERSION", "15.1.0")
     monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
 
     from dcc_mcp_substance3d_designer.install_cli import main

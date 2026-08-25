@@ -5,7 +5,7 @@ description: >-
   Use when checking Designer state or creating a rendered procedural or
   texture-imported PBR material package through typed graph operations.
 license: MIT
-compatibility: "Substance 3D Designer Python 3.9+; dcc-mcp-core 0.19+"
+compatibility: "Substance 3D Designer Python 3.9+; dcc-mcp-core 0.20.15+"
 allowed-tools: Python
 metadata:
   dcc-mcp:

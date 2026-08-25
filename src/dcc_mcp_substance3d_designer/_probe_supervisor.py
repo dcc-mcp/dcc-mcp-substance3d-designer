@@ -79,7 +79,9 @@ def _terminate_owned_session(leader_pid: int, leader_pgid: int, child: Optional[
         members = _owned_session_members(leader_pgid, leader_pid, deadline)
         if members is None or leader_pid not in members:
             return False
-        descendants = sorted(members - {leader_pid})
+        if child is not None:
+            child.poll()
+        descendants = sorted(members - {leader_pid}, reverse=True)
         if not descendants:
             return True
         for pid in descendants:

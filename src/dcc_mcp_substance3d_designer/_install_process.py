@@ -206,7 +206,7 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
             members = _list_posix_process_group_members(self._pgid, sid=self._sid, deadline=deadline)
             if members is None or self._leader_pid not in members or _deadline_expired(deadline):
                 raise OSError("owned session membership is unavailable")
-            descendants = sorted(members - {self._leader_pid})
+            descendants = sorted(members - {self._leader_pid}, reverse=True)
             if not descendants:
                 if not self._leader_matches() or _deadline_expired(deadline):
                     raise OSError("owned session leader identity changed before cleanup")
@@ -216,18 +216,22 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
                 if _deadline_expired(deadline) or not self._leader_matches():
                     raise OSError("owned session leader identity changed before cleanup")
                 expected = observe_process_identity(pid)
-                if expected is None or _deadline_expired(deadline):
-                    raise OSError("owned session member identity is unavailable")
+                if _deadline_expired(deadline):
+                    raise OSError("owned session cleanup deadline expired")
+                if expected is None:
+                    continue
                 try:
                     current_sid = int(os.getsid(pid))
-                except OSError:
+                except ProcessLookupError:
                     continue
+                except OSError as exc:
+                    raise OSError("owned session member identity is unavailable") from exc
                 current = observe_process_identity(pid)
-                if (
-                    current_sid != self._sid
-                    or not self._same_process_identity(expected, current)
-                    or _deadline_expired(deadline)
-                ):
+                if _deadline_expired(deadline):
+                    raise OSError("owned session cleanup deadline expired")
+                if current is None:
+                    continue
+                if current_sid != self._sid or not self._same_process_identity(expected, current):
                     raise OSError("owned session member identity changed before cleanup")
                 try:
                     os.kill(pid, _POSIX_SIGKILL)

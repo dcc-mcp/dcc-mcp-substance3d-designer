@@ -833,6 +833,37 @@ def test_posix_owner_never_signals_a_member_whose_identity_changes(monkeypatch: 
     assert signals == []
 
 
+def test_posix_owner_retries_when_a_snapshotted_member_exits_before_identity_capture(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = object.__new__(_install_process._PosixProcessTreeOwner)
+    owner._process = SimpleNamespace(poll=lambda: None)
+    owner._leader_pid = 9123
+    owner._pgid = 9123
+    owner._sid = 9123
+    owner._leader_identity = {"pid": 9123, "start_identity": "leader:1"}
+    snapshots = iter(({9123, 9912}, {9123}))
+    signals = []
+    monkeypatch.setattr(owner, "_leader_matches", lambda: True)
+    monkeypatch.setattr(
+        _install_process,
+        "_list_posix_process_group_members",
+        lambda _pgid, *, sid, deadline: next(snapshots),
+    )
+    monkeypatch.setattr(
+        _install_process,
+        "observe_process_identity",
+        lambda pid: None if pid == 9912 else owner._leader_identity.copy(),
+    )
+    monkeypatch.setattr(_install_process.os, "kill", lambda pid, sig: signals.append((pid, sig)))
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_install_process.time, "sleep", lambda _delay: None)
+
+    owner.terminate(deadline=101.0)
+
+    assert signals == [(9123, _install_process._POSIX_SIGKILL)]
+
+
 def test_posix_group_snapshot_accepts_bsd_ps_empty_heading(monkeypatch: pytest.MonkeyPatch) -> None:
     completed = SimpleNamespace(returncode=0, stdout="\n  9912  9123  9123\n  9913  9913  9913\n")
     monkeypatch.setattr(_install_process.subprocess, "run", lambda *_args, **_kwargs: completed)
@@ -1237,7 +1268,8 @@ def test_owned_supervisor_cleans_live_tree_when_controller_is_sigkilled(tmp_path
         deadline = time.monotonic() + 5.0
         while time.monotonic() < deadline and any(_pid_alive(pid) for pid in pids.values()):
             time.sleep(0.02)
-        assert all(not _pid_alive(pid) for pid in pids.values())
+        survivors = {name: pid for name, pid in pids.items() if _pid_alive(pid)}
+        assert not survivors, survivors
     finally:
         if controller.poll() is None:
             controller.kill()

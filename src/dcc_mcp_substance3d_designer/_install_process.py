@@ -26,6 +26,7 @@ _MAX_PROCESS_CLEANUP_RESERVE_SECONDS = 2.0
 _MIN_PROCESS_CLEANUP_RESERVE_SECONDS = 0.05
 _POSIX_SIGKILL = getattr(signal, "SIGKILL", 9)
 _PROC_PIDTBSDINFO = 3
+_DARWIN_PROCESS_STATUS_ZOMBIE = 5
 
 
 def _deadline_expired(deadline: float) -> bool:
@@ -79,6 +80,7 @@ def _read_darwin_bsd_identity(pid: int, proc_pidinfo) -> Optional[Dict[str, Any]
     if (
         returned != size
         or int(info.pbi_pid) != pid
+        or int(info.pbi_status) == _DARWIN_PROCESS_STATUS_ZOMBIE
         or parent_pid <= 0
         or seconds <= 0
         or not 0 <= microseconds < 1_000_000

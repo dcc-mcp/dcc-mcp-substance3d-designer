@@ -18,7 +18,7 @@ from types import SimpleNamespace
 import pytest
 from jsonschema import Draft202012Validator
 
-from dcc_mcp_substance3d_designer import _install_preflight, _install_process, _installer
+from dcc_mcp_substance3d_designer import _install_preflight, _install_process, _installer, _probe_supervisor
 from dcc_mcp_substance3d_designer._install_io import write_json_atomic
 from dcc_mcp_substance3d_designer._install_model import InstallContext, LifecycleFailure
 from dcc_mcp_substance3d_designer.install_cli import main
@@ -862,6 +862,45 @@ def test_posix_owner_retries_when_a_snapshotted_member_exits_before_identity_cap
     owner.terminate(deadline=101.0)
 
     assert signals == [(9123, _install_process._POSIX_SIGKILL)]
+
+
+def test_parent_death_cleanup_signals_changed_groups_before_the_original_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class SupervisorTerminated(Exception):
+        pass
+
+    group_signals = []
+
+    def kill_group(pgid: int, sig: int) -> None:
+        group_signals.append((pgid, sig))
+        if pgid == 9123:
+            raise SupervisorTerminated
+
+    monkeypatch.setattr(_probe_supervisor.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_probe_supervisor.os, "getpid", lambda: 9123)
+    monkeypatch.setattr(_probe_supervisor.os, "getpgrp", lambda: 9123, raising=False)
+    monkeypatch.setattr(_probe_supervisor.os, "getsid", lambda _pid: 9123, raising=False)
+    monkeypatch.setattr(_probe_supervisor.os, "getpgid", lambda pid: pid, raising=False)
+    monkeypatch.setattr(
+        _probe_supervisor,
+        "_owned_session_members",
+        lambda _pgid, _sid, _deadline: {9123: 9123, 9912: 9912},
+    )
+    monkeypatch.setattr(_probe_supervisor.os, "killpg", kill_group, raising=False)
+    monkeypatch.setattr(
+        _probe_supervisor.os,
+        "kill",
+        lambda _pid, _sig: pytest.fail("parent-death cleanup must signal complete process groups"),
+    )
+
+    with pytest.raises(SupervisorTerminated):
+        _probe_supervisor._terminate_owned_session(9123, 9123, None)
+
+    assert group_signals == [
+        (9912, _probe_supervisor._POSIX_SIGKILL),
+        (9123, _probe_supervisor._POSIX_SIGKILL),
+    ]
 
 
 def test_posix_group_snapshot_accepts_bsd_ps_empty_heading(monkeypatch: pytest.MonkeyPatch) -> None:

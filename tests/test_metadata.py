@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import sys
+import zipfile
+from importlib import util
 from pathlib import Path
 
+import pytest
 import yaml
 
 import dcc_mcp_substance3d_designer as adapter
@@ -25,13 +30,90 @@ def test_plugin_and_skill_contract_files_exist():
     assert package.joinpath("skills", "designer-session", "tools.yaml").exists()
 
 
-def test_designer_session_metadata_matches_the_shipped_authoring_skill():
-    skill_file = ROOT / "src" / "dcc_mcp_substance3d_designer" / "skills" / "designer-session" / "SKILL.md"
-    frontmatter = skill_file.read_text(encoding="utf-8").split("---", 2)[1]
-    metadata = yaml.safe_load(frontmatter)
+def _skill_files() -> list[Path]:
+    return sorted((ROOT / "src" / "dcc_mcp_substance3d_designer" / "skills").glob("*/SKILL.md"))
 
-    assert metadata["metadata"]["dcc-mcp"]["version"] == adapter.__version__
-    assert "author" in metadata["description"].casefold()
+
+def test_all_packaged_skill_metadata_matches_the_adapter():
+    skill_files = _skill_files()
+    assert skill_files
+
+    for skill_file in skill_files:
+        frontmatter = skill_file.read_text(encoding="utf-8").split("---", 2)[1]
+        metadata = yaml.safe_load(frontmatter)
+        assert metadata["metadata"]["dcc-mcp"]["version"] == adapter.__version__, skill_file
+
+    designer_session = next(path for path in skill_files if path.parent.name == "designer-session")
+    session_metadata = yaml.safe_load(designer_session.read_text(encoding="utf-8").split("---", 2)[1])
+    assert "author" in session_metadata["description"].casefold()
+
+
+def test_release_please_tracks_every_packaged_skill_version():
+    config = json.loads(ROOT.joinpath("release-please-config.json").read_text(encoding="utf-8"))
+    configured = {entry["path"] for entry in config["packages"]["."]["extra-files"] if entry.get("type") == "generic"}
+    expected = {path.relative_to(ROOT).as_posix() for path in _skill_files()}
+    assert expected <= configured
+
+
+def _workflow_steps(name: str, job: str) -> list[dict[str, object]]:
+    workflow = yaml.safe_load(ROOT.joinpath(".github", "workflows", name).read_text(encoding="utf-8"))
+    return workflow["jobs"][job]["steps"]
+
+
+def _run_index(steps: list[dict[str, object]], command: str) -> int:
+    return next(index for index, step in enumerate(steps) if step.get("run") == command)
+
+
+def test_release_validates_source_and_built_wheel_before_publish():
+    steps = _workflow_steps("release.yml", "build-and-publish")
+    source_check = _run_index(steps, "python tools/check_release_metadata.py")
+    build = _run_index(steps, "python -m build")
+    wheel_check = _run_index(steps, "python tools/check_release_metadata.py --wheel dist/*.whl")
+    publish = next(
+        index for index, step in enumerate(steps) if step.get("uses") == "pypa/gh-action-pypi-publish@release/v1"
+    )
+    assert source_check < build < wheel_check < publish
+
+
+def test_ci_validates_the_built_wheel_metadata():
+    steps = _workflow_steps("ci.yml", "lint-and-build")
+    build = _run_index(steps, "python -m build")
+    wheel_check = _run_index(steps, "python tools/check_release_metadata.py --wheel dist/*.whl")
+    assert build < wheel_check
+
+
+def test_release_metadata_checker_accepts_the_repository():
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "tools" / "check_release_metadata.py")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_release_metadata_checker_rejects_a_stale_wheel_skill(tmp_path: Path):
+    checker_path = ROOT / "tools" / "check_release_metadata.py"
+    spec = util.spec_from_file_location("designer_release_metadata_checker", checker_path)
+    assert spec is not None and spec.loader is not None
+    checker = util.module_from_spec(spec)
+    spec.loader.exec_module(checker)
+
+    wheel = tmp_path / "designer.whl"
+    package = "dcc_mcp_substance3d_designer"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr(f"{package}-0.6.0.dist-info/METADATA", f"Version: {adapter.__version__}\n")
+        archive.writestr(f"{package}/__version__.py", f'__version__ = "{adapter.__version__}"\n')
+        for skill_file in _skill_files():
+            skill_text = skill_file.read_text(encoding="utf-8")
+            if skill_file.parent.name == "designer-diagnostics":
+                skill_text = skill_text.replace(adapter.__version__, "0.5.0", 1)
+            archive.writestr(f"{package}/skills/{skill_file.parent.name}/SKILL.md", skill_text)
+
+    with pytest.raises(checker.MetadataError, match="does not match source"):
+        checker.validate_wheel(ROOT, wheel, adapter.__version__)
 
 
 def test_start_server_defers_port_resolution_to_core(monkeypatch):

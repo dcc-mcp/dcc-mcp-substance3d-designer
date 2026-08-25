@@ -55,7 +55,9 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m pip install --upgrade pip build twine
+      - run: python tools/check_release_metadata.py
       - run: python -m build
+      - run: python tools/check_release_metadata.py --wheel dist/*.whl
       - run: python -m twine check dist/*
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:

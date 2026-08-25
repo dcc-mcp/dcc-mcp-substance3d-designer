@@ -49,5 +49,7 @@ jobs:
       - run: ruff check src tests tools
       - run: ruff format --check src tests tools
       - run: python tools/lint_skills.py
+      - run: python tools/check_release_metadata.py
       - run: python -m build
+      - run: python tools/check_release_metadata.py --wheel dist/*.whl
       - run: python -m twine check dist/*

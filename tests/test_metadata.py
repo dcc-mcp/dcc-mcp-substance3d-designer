@@ -40,14 +40,16 @@ def test_start_server_defers_port_resolution_to_core(monkeypatch):
     monkeypatch.setattr(
         server_module,
         "SubstanceDesignerMcpServer",
-        lambda _dispatcher, port=None: ports.append(port) or stub,
+        lambda _dispatcher, port=None, enable_gateway_failover=True: (
+            ports.append((port, enable_gateway_failover)) or stub
+        ),
     )
     monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_PORT", "8765")
 
     dispatcher = object()
-    server_module.start_server(dispatcher, 0)
+    server_module.start_server(dispatcher, 0, enable_gateway_failover=False)
     server_module.stop_server()
     server_module.start_server(dispatcher)
     server_module.stop_server()
 
-    assert ports == [0, None]
+    assert ports == [(0, False), (None, True)]

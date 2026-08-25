@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.5.0...v0.6.0) (2026-08-25)
+
+
+### Features
+
+* add Designer install lifecycle ([2ba733b](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/2ba733b733cc61d3573bc07f638f0e0916561628))
+* report Designer color management ([c4a00cf](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/c4a00cf448b9043262289e7d721249283d234230))
+
+
+### Bug Fixes
+
+* defer Designer startup registration ([51ea9cb](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/51ea9cb7269f44f904a6739b660478bee946c797))
+* harden Designer install lifecycle ([b5bc159](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/b5bc159641a178478dc3d57fdebbf70f959418f6))
+
 ## [0.5.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.4.0...v0.5.0) (2026-07-29)
 
 

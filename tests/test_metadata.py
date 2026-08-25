@@ -111,7 +111,7 @@ def _write_wheel(
     wheel: Path,
     *,
     metadata_name: str = PROJECT,
-    dist_info: str = f"{PACKAGE}-0.6.0.dist-info",
+    dist_info: str = f"{PACKAGE}-{adapter.__version__}.dist-info",
     mutate_skill=None,
 ) -> None:
     with zipfile.ZipFile(wheel, "w") as archive:
@@ -146,7 +146,7 @@ def _move_release_marker_to_the_wrong_yaml_node(_name: str, text: str) -> str:
 def test_release_metadata_checker_rejects_a_stale_wheel_skill(tmp_path: Path):
     checker = _checker()
 
-    wheel = tmp_path / f"{PACKAGE}-0.6.0-py3-none-any.whl"
+    wheel = tmp_path / f"{PACKAGE}-{adapter.__version__}-py3-none-any.whl"
     _write_wheel(
         wheel,
         mutate_skill=lambda name, text: (
@@ -184,7 +184,7 @@ def test_release_metadata_checker_rejects_the_wrong_distribution(tmp_path: Path)
 )
 def test_release_metadata_checker_binds_the_real_skill_yaml_path(tmp_path: Path, mutate_skill):
     checker = _checker()
-    wheel = tmp_path / f"{PACKAGE}-0.6.0-py3-none-any.whl"
+    wheel = tmp_path / f"{PACKAGE}-{adapter.__version__}-py3-none-any.whl"
     _write_wheel(wheel, mutate_skill=mutate_skill)
 
     with pytest.raises(checker.MetadataError, match="Skill metadata"):
@@ -193,7 +193,7 @@ def test_release_metadata_checker_binds_the_real_skill_yaml_path(tmp_path: Path,
 
 def test_release_metadata_checker_binds_the_marker_to_the_real_wheel_yaml_node(tmp_path: Path):
     checker = _checker()
-    wheel = tmp_path / f"{PACKAGE}-0.6.0-py3-none-any.whl"
+    wheel = tmp_path / f"{PACKAGE}-{adapter.__version__}-py3-none-any.whl"
     _write_wheel(wheel, mutate_skill=_move_release_marker_to_the_wrong_yaml_node)
 
     with pytest.raises(checker.MetadataError, match="release-please marker"):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import ipaddress
 import json
+import math
 import os
 import shutil
 import signal
@@ -18,7 +19,17 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
 _MAX_PROBE_OUTPUT_BYTES = 256 * 1024
+_MIN_PROBE_TIMEOUT_SECONDS = 0.1
+_MAX_PROBE_TIMEOUT_SECONDS = 30.0
 _PROC_PIDTBSDINFO = 3
+
+
+def _deadline_expired(deadline: float) -> bool:
+    return not math.isfinite(deadline) or time.monotonic() >= deadline
+
+
+def _deadline_remaining(deadline: float) -> float:
+    return max(0.0, deadline - time.monotonic())
 
 
 class _DarwinProcBsdInfo(ctypes.Structure):
@@ -117,9 +128,8 @@ class _ProcessTreeOwner:
     def close(self) -> None:
         return None
 
-    def wait_empty(self, timeout: float) -> bool:
-        del timeout
-        return True
+    def wait_empty(self, deadline: float) -> bool:
+        return not _deadline_expired(deadline)
 
 
 class _PosixProcessTreeOwner(_ProcessTreeOwner):
@@ -155,21 +165,26 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
             raise OSError("owned session leader identity changed before cleanup")
         os.killpg(self._pgid, signal.SIGKILL)
 
-    def wait_empty(self, timeout: float) -> bool:
-        deadline = time.monotonic() + max(0.0, timeout)
+    def wait_empty(self, deadline: float) -> bool:
+        if _deadline_expired(deadline):
+            return False
         try:
-            self._process.wait(timeout=max(0.0, deadline - time.monotonic()))
+            self._process.wait(timeout=_deadline_remaining(deadline))
         except (OSError, subprocess.TimeoutExpired):
             return False
+        if _deadline_expired(deadline):
+            return False
         while True:
+            if _deadline_expired(deadline):
+                return False
             members = _list_posix_process_group_members(self._pgid)
+            if _deadline_expired(deadline):
+                return False
             if members is None:
                 return False
             if not members:
                 return True
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(0.01)
+            time.sleep(min(0.01, _deadline_remaining(deadline)))
 
 
 class _WindowsProcessTreeOwner(_ProcessTreeOwner):
@@ -279,9 +294,10 @@ class _WindowsProcessTreeOwner(_ProcessTreeOwner):
         if self._handle and not self._kernel32.TerminateJobObject(self._handle, 1):
             raise OSError(self._ctypes.get_last_error(), "TerminateJobObject failed")
 
-    def wait_empty(self, timeout: float) -> bool:
-        deadline = time.monotonic() + max(0.0, timeout)
+    def wait_empty(self, deadline: float) -> bool:
         while self._handle:
+            if _deadline_expired(deadline):
+                return False
             accounting = self._accounting_type()
             if not self._kernel32.QueryInformationJobObject(
                 self._handle,
@@ -291,12 +307,12 @@ class _WindowsProcessTreeOwner(_ProcessTreeOwner):
                 None,
             ):
                 return False
+            if _deadline_expired(deadline):
+                return False
             if accounting.ActiveProcesses == 0:
                 return True
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(0.01)
-        return True
+            time.sleep(min(0.01, _deadline_remaining(deadline)))
+        return not _deadline_expired(deadline)
 
     def close(self) -> None:
         if self._handle:
@@ -355,7 +371,15 @@ def _resume_windows_process(process: subprocess.Popen) -> None:
         raise OSError("No suspended supervisor thread could be resumed")
 
 
-def _start_owned_process(command: Sequence[str], *, env: Optional[Dict[str, str]], cwd: Optional[Path]):
+def _start_owned_process(
+    command: Sequence[str],
+    *,
+    env: Optional[Dict[str, str]],
+    cwd: Optional[Path],
+    deadline: Optional[float] = None,
+):
+    if deadline is not None and _deadline_expired(deadline):
+        raise TimeoutError("probe deadline expired before launch")
     kwargs: Dict[str, Any] = {
         "stdin": subprocess.DEVNULL,
         "stdout": subprocess.DEVNULL,
@@ -365,52 +389,90 @@ def _start_owned_process(command: Sequence[str], *, env: Optional[Dict[str, str]
         "cwd": None if cwd is None else str(cwd),
     }
     if os.name == "posix":
+        if deadline is not None and _deadline_expired(deadline):
+            raise TimeoutError("probe deadline expired before launch")
         process = subprocess.Popen(list(command), start_new_session=True, **kwargs)
+        owner = None
         try:
-            return process, _PosixProcessTreeOwner(process)
+            owner = _PosixProcessTreeOwner(process)
+            if deadline is not None and _deadline_expired(deadline):
+                raise TimeoutError("probe deadline expired during launch")
+            return process, owner
         except BaseException:
+            if owner is not None:
+                if deadline is not None:
+                    _cleanup_owned_process(process, owner, deadline=deadline)
+                else:
+                    _cleanup_owned_process(process, owner)
+                raise
             try:
                 if process.poll() is None and os.getpgid(process.pid) == process.pid:
                     os.killpg(process.pid, signal.SIGKILL)
             except OSError:
                 if process.poll() is None:
                     process.kill()
+            wait_timeout = 3.0 if deadline is None else _deadline_remaining(deadline)
             try:
-                process.wait(timeout=3.0)
+                process.wait(timeout=wait_timeout)
             except (OSError, subprocess.TimeoutExpired):
                 pass
             raise
     if os.name == "nt":
+        if deadline is not None and _deadline_expired(deadline):
+            raise TimeoutError("probe deadline expired before Job creation")
         owner = _WindowsProcessTreeOwner()
         process = None
         try:
+            if deadline is not None and _deadline_expired(deadline):
+                raise TimeoutError("probe deadline expired before launch")
             process = subprocess.Popen(
                 list(command), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) | 0x00000004, **kwargs
             )
+            if deadline is not None and _deadline_expired(deadline):
+                raise TimeoutError("probe deadline expired during launch")
             owner.assign(process)
+            if deadline is not None and _deadline_expired(deadline):
+                raise TimeoutError("probe deadline expired while assigning Job")
             _resume_windows_process(process)
+            if deadline is not None and _deadline_expired(deadline):
+                raise TimeoutError("probe deadline expired while resuming process")
             return process, owner
         except BaseException:
             try:
                 owner.terminate()
             except OSError:
-                if process is not None and process.poll() is None:
-                    process.kill()
+                pass
             if process is not None:
+                if process.poll() is None:
+                    process.kill()
+                wait_timeout = 3.0 if deadline is None else _deadline_remaining(deadline)
                 try:
-                    process.wait(timeout=3.0)
+                    process.wait(timeout=wait_timeout)
                 except subprocess.TimeoutExpired:
                     pass
             owner.close()
             raise
+    if deadline is not None and _deadline_expired(deadline):
+        raise TimeoutError("probe deadline expired before launch")
     process = subprocess.Popen(list(command), **kwargs)
+    if deadline is not None and _deadline_expired(deadline):
+        try:
+            process.kill()
+            process.wait(timeout=_deadline_remaining(deadline))
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        raise TimeoutError("probe deadline expired during launch")
     return process, _ProcessTreeOwner()
 
 
-def _read_supervisor_status(path: Path) -> Optional[Dict[str, Any]]:
+def _read_supervisor_status(path: Path, *, deadline: Optional[float] = None) -> Optional[Dict[str, Any]]:
+    if deadline is not None and _deadline_expired(deadline):
+        return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, OSError, ValueError):
+        return None
+    if deadline is not None and _deadline_expired(deadline):
         return None
     return payload if isinstance(payload, dict) else None
 
@@ -506,58 +568,86 @@ def _start_owned_supervised_process(
         raise
 
 
-def _cleanup_owned_process(process: Any, owner: _ProcessTreeOwner) -> bool:
+def _cleanup_owned_process(
+    process: Any,
+    owner: _ProcessTreeOwner,
+    *,
+    deadline: Optional[float] = None,
+) -> bool:
+    if deadline is None:
+        deadline = time.monotonic() + 3.0
     clean = True
+    expired = _deadline_expired(deadline)
     try:
         owner.terminate()
     except (NotImplementedError, OSError):
         clean = False
         if process.poll() is None:
             process.kill()
+    if _deadline_expired(deadline):
+        clean = False
     try:
-        process.wait(timeout=3.0)
+        process.wait(timeout=_deadline_remaining(deadline))
     except (OSError, subprocess.TimeoutExpired):
         if process.poll() is None:
             process.kill()
         try:
-            process.wait(timeout=1.0)
+            process.wait(timeout=_deadline_remaining(deadline))
         except (OSError, subprocess.TimeoutExpired):
             clean = False
+    if _deadline_expired(deadline):
+        clean = False
+    try:
+        if not owner.wait_empty(deadline):
+            clean = False
     finally:
-        try:
-            if not owner.wait_empty(3.0):
-                clean = False
-        finally:
-            owner.close()
-    return clean
+        owner.close()
+    return clean and not expired and not _deadline_expired(deadline)
 
 
-def _remove_probe_directory(root: Path, timeout: float = 3.0) -> bool:
-    deadline = time.monotonic() + max(0.0, timeout)
+def _remove_probe_directory(
+    root: Path,
+    timeout: float = 3.0,
+    *,
+    deadline: Optional[float] = None,
+) -> bool:
+    if deadline is None:
+        budget = float(timeout)
+        if not math.isfinite(budget) or budget < 0.0:
+            return False
+        deadline = time.monotonic() + budget
     while True:
+        expired_before_cleanup = _deadline_expired(deadline)
         try:
             shutil.rmtree(root)
-            return True
+            return not expired_before_cleanup and not _deadline_expired(deadline)
         except FileNotFoundError:
-            return True
+            return not expired_before_cleanup and not _deadline_expired(deadline)
         except OSError:
-            if time.monotonic() >= deadline:
+            if expired_before_cleanup or _deadline_expired(deadline):
                 return False
-            time.sleep(0.02)
+            time.sleep(min(0.02, _deadline_remaining(deadline)))
 
 
 def _run_bounded_command_in_root(
     command: Sequence[str],
     root: Path,
     *,
-    timeout: float = 20.0,
+    deadline: float,
     env: Optional[Dict[str, str]] = None,
     cwd: Optional[Path] = None,
 ) -> Dict[str, Any]:
+    timeout_result = {"success": False, "reason": "probe timed out", "truncated": False}
+    if _deadline_expired(deadline):
+        return timeout_result
     status_path = root / "status.json"
     stdout_path = root / "stdout.bin"
     stderr_path = root / "stderr.bin"
+    if _deadline_expired(deadline):
+        return timeout_result
     supervisor_script = Path(__file__).with_name("_probe_supervisor.py").resolve(strict=True)
+    if _deadline_expired(deadline):
+        return timeout_result
     supervisor = [
         sys.executable,
         str(supervisor_script),
@@ -568,43 +658,101 @@ def _run_bounded_command_in_root(
         *list(command),
     ]
     try:
-        process, owner = _start_owned_process(supervisor, env=env, cwd=cwd)
+        process, owner = _start_owned_process(supervisor, env=env, cwd=cwd, deadline=deadline)
+    except TimeoutError:
+        return timeout_result
     except OSError as exc:
+        if _deadline_expired(deadline):
+            return timeout_result
         return {"success": False, "reason": "launch failed: " + exc.__class__.__name__}
-    deadline = time.monotonic() + max(0.1, min(float(timeout), 30.0))
     record = None
     reason = None
     cleanup_ok = True
+    timed_out = False
     try:
-        while time.monotonic() < deadline:
-            if any(
-                path.exists() and path.stat().st_size > _MAX_PROBE_OUTPUT_BYTES for path in (stdout_path, stderr_path)
-            ):
+        while not _deadline_expired(deadline):
+            oversized = False
+            for path in (stdout_path, stderr_path):
+                if _deadline_expired(deadline):
+                    timed_out = True
+                    break
+                try:
+                    size = path.stat().st_size
+                except FileNotFoundError:
+                    size = 0
+                except OSError:
+                    reason = "probe output inspection failed"
+                    break
+                if _deadline_expired(deadline):
+                    timed_out = True
+                    break
+                if size > _MAX_PROBE_OUTPUT_BYTES:
+                    oversized = True
+                    break
+            if timed_out or reason is not None:
+                break
+            if oversized:
                 reason = "probe output exceeded limit"
                 break
-            if status_path.is_file():
-                try:
-                    record = json.loads(status_path.read_text(encoding="utf-8"))
-                except (OSError, ValueError):
+            if _deadline_expired(deadline):
+                timed_out = True
+                break
+            status_present = status_path.is_file()
+            if _deadline_expired(deadline):
+                timed_out = True
+                break
+            if status_present:
+                record = _read_supervisor_status(status_path, deadline=deadline)
+                if _deadline_expired(deadline):
+                    timed_out = True
+                    record = None
+                    break
+                if record is None:
                     reason = "probe returned invalid status"
                 break
-            if process.poll() is not None:
+            if _deadline_expired(deadline):
+                timed_out = True
+                break
+            supervisor_result = process.poll()
+            if _deadline_expired(deadline):
+                timed_out = True
+                break
+            if supervisor_result is not None:
                 reason = "probe supervisor exited unexpectedly"
                 break
-            time.sleep(0.02)
+            time.sleep(min(0.02, _deadline_remaining(deadline)))
         else:
-            reason = "probe timed out"
+            timed_out = True
     finally:
-        cleanup_ok = _cleanup_owned_process(process, owner)
-    stdout = stdout_path.read_bytes() if stdout_path.is_file() else b""
-    stderr = stderr_path.read_bytes() if stderr_path.is_file() else b""
+        cleanup_ok = _cleanup_owned_process(process, owner, deadline=deadline)
+        if _deadline_expired(deadline):
+            timed_out = True
+    if timed_out:
+        return timeout_result
+    stdout = b""
+    stderr = b""
+    for path, stream_name in ((stdout_path, "stdout"), (stderr_path, "stderr")):
+        if _deadline_expired(deadline):
+            return timeout_result
+        try:
+            payload = path.read_bytes()
+        except FileNotFoundError:
+            payload = b""
+        except OSError:
+            return {"success": False, "reason": "probe output read failed", "truncated": False}
+        if _deadline_expired(deadline):
+            return timeout_result
+        if stream_name == "stdout":
+            stdout = payload
+        else:
+            stderr = payload
     truncated = len(stdout) > _MAX_PROBE_OUTPUT_BYTES or len(stderr) > _MAX_PROBE_OUTPUT_BYTES
     if not cleanup_ok:
         return {"success": False, "reason": "probe cleanup failed", "truncated": truncated}
     if record is None:
         return {"success": False, "reason": reason or "probe failed", "truncated": truncated}
     returncode = int(record.get("returncode", -1))
-    return {
+    result = {
         "success": record.get("state") == "completed" and returncode == 0 and not truncated,
         "returncode": returncode,
         "reason": None if record.get("state") == "completed" else "probe launch failed",
@@ -612,6 +760,9 @@ def _run_bounded_command_in_root(
         "stderr": stderr[:_MAX_PROBE_OUTPUT_BYTES].decode("utf-8", errors="replace"),
         "truncated": truncated,
     }
+    if _deadline_expired(deadline):
+        return timeout_result
+    return result
 
 
 def run_bounded_command(
@@ -623,19 +774,39 @@ def run_bounded_command(
     private_cwd: bool = False,
 ) -> Dict[str, Any]:
     """Run metadata probes under an owned process tree and bounded deadline."""
+    try:
+        budget = float(timeout)
+    except (TypeError, ValueError, OverflowError):
+        budget = float("nan")
+    if (
+        isinstance(timeout, bool)
+        or not math.isfinite(budget)
+        or not _MIN_PROBE_TIMEOUT_SECONDS <= budget <= _MAX_PROBE_TIMEOUT_SECONDS
+    ):
+        return {"success": False, "reason": "invalid probe timeout", "truncated": False}
+    started = time.monotonic()
+    deadline = started + budget
+    if not math.isfinite(started) or not math.isfinite(deadline) or _deadline_expired(deadline):
+        return {"success": False, "reason": "probe timed out", "truncated": False}
     root = Path(tempfile.mkdtemp(prefix="dcc-mcp-designer-probe-"))
+    if _deadline_expired(deadline):
+        _remove_probe_directory(root, deadline=deadline)
+        return {"success": False, "reason": "probe timed out", "truncated": False}
     try:
         result = _run_bounded_command_in_root(
             command,
             root,
-            timeout=timeout,
+            deadline=deadline,
             env=env,
             cwd=root if private_cwd else cwd,
         )
     except BaseException:
-        _remove_probe_directory(root)
+        _remove_probe_directory(root, deadline=deadline)
         raise
-    if not _remove_probe_directory(root):
+    cleanup_ok = _remove_probe_directory(root, deadline=deadline)
+    if _deadline_expired(deadline):
+        return {"success": False, "reason": "probe timed out", "truncated": bool(result.get("truncated"))}
+    if not cleanup_ok:
         return {"success": False, "reason": "probe cleanup failed", "truncated": bool(result.get("truncated"))}
     return result
 

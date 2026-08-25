@@ -100,6 +100,8 @@ def _list_posix_process_group_members(pgid: int) -> Optional[set[int]]:
     members = set()
     for line in completed.stdout.splitlines():
         fields = line.split()
+        if not fields:
+            continue
         if len(fields) != 2 or not all(field.isascii() and field.isdecimal() for field in fields):
             return None
         process_pid, process_group = (int(field) for field in fields)

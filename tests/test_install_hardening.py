@@ -442,6 +442,35 @@ def test_posix_owner_wait_empty_rejects_a_surviving_group_member(monkeypatch: py
     assert owner.wait_empty(0.0) is False
 
 
+def test_posix_owner_live_match_survives_exec_and_parent_reobservation(monkeypatch: pytest.MonkeyPatch) -> None:
+    owner = object.__new__(_install_process._PosixProcessTreeOwner)
+    owner._process = SimpleNamespace(poll=lambda: None)
+    owner._leader_pid = 9123
+    owner._pgid = 9123
+    owner._leader_identity = {
+        "pid": 9123,
+        "parent_pid": 42,
+        "executable": "/usr/bin/python3",
+        "start_identity": "darwin-proc-bsdinfo:1777000000:123456",
+    }
+    monkeypatch.setattr(_install_process.os, "getpgid", lambda _pid: 9123, raising=False)
+    current_identity = {
+        "pid": 9123,
+        "parent_pid": 1,
+        "executable": "/System/Library/Frameworks/Python.app/Contents/MacOS/Python",
+        "start_identity": "darwin-proc-bsdinfo:1777000000:123456",
+    }
+    monkeypatch.setattr(
+        _install_process,
+        "observe_process_identity",
+        lambda _pid: current_identity.copy(),
+    )
+
+    assert owner._leader_matches() is True
+    current_identity["start_identity"] = "darwin-proc-bsdinfo:1777000000:123457"
+    assert owner._leader_matches() is False
+
+
 def test_posix_group_snapshot_accepts_bsd_ps_empty_heading(monkeypatch: pytest.MonkeyPatch) -> None:
     completed = SimpleNamespace(returncode=0, stdout="\n  9912  9123\n  9913  9913\n")
     monkeypatch.setattr(_install_process.subprocess, "run", lambda *_args, **_kwargs: completed)

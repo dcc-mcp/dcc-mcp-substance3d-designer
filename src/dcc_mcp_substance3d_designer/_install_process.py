@@ -141,7 +141,12 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
             current_pgid = int(os.getpgid(self._leader_pid))
         except OSError:
             return False
-        return current_pgid == self._pgid and observe_process_identity(self._leader_pid) == self._leader_identity
+        current_identity = observe_process_identity(self._leader_pid)
+        if current_identity is None:
+            return False
+        return current_pgid == self._pgid and all(
+            current_identity.get(field) == self._leader_identity.get(field) for field in ("pid", "start_identity")
+        )
 
     def terminate(self) -> None:
         if self._process.poll() is not None:

@@ -622,6 +622,20 @@ def test_darwin_process_identity_distinguishes_same_second_microsecond_reuse() -
     assert first != second
 
 
+def test_darwin_process_identity_rejects_a_zombie_kernel_record() -> None:
+    def fake_proc_pidinfo(pid, _flavor, _arg, buffer, size):
+        info = _install_process._DarwinProcBsdInfo()
+        info.pbi_status = 5
+        info.pbi_pid = pid
+        info.pbi_ppid = 42
+        info.pbi_start_tvsec = 1_777_000_000
+        info.pbi_start_tvusec = 123_456
+        ctypes.memmove(buffer, ctypes.byref(info), size)
+        return size
+
+    assert _install_process._read_darwin_bsd_identity(9123, fake_proc_pidinfo) is None
+
+
 def test_darwin_observation_uses_libproc_without_platform_local_shadowing(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeFunction:
         def __init__(self, callback):
@@ -1066,6 +1080,8 @@ def test_listener_observation_binds_an_exact_direct_child_process() -> None:
 
 def _pid_alive(pid: int) -> bool:
     if os.name != "nt":
+        if sys.platform == "darwin":
+            return _install_process.observe_process_identity(pid) is not None
         try:
             os.kill(pid, 0)
         except OSError:

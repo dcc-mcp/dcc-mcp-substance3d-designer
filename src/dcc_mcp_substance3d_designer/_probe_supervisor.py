@@ -23,7 +23,22 @@ def _write_status(path: Path, payload: dict) -> None:
     os.replace(str(temporary), str(path))
 
 
-def _owned_session_members(pgid: int, sid: int, deadline: float) -> Optional[dict[int, int]]:
+def _read_linux_process_identity(pid: int) -> Optional[dict]:
+    try:
+        stat = Path("/proc/{}/stat".format(pid)).read_text(encoding="utf-8")
+        closing = stat.rfind(") ")
+        fields = stat[closing + 2 :].split()
+        return {
+            "pid": pid,
+            "pgid": int(fields[2]),
+            "sid": int(fields[3]),
+            "start_identity": fields[19],
+        }
+    except (IndexError, OSError, ValueError):
+        return None
+
+
+def _owned_session_members(pgid: int, sid: int, deadline: float) -> Optional[dict]:
     remaining = deadline - time.monotonic()
     if pgid <= 0 or sid <= 0 or remaining <= 0.0:
         return None
@@ -63,7 +78,15 @@ def _owned_session_members(pgid: int, sid: int, deadline: float) -> Optional[dic
         if time.monotonic() >= deadline:
             return None
         if process_group == pgid or process_session == sid:
-            members[pid] = process_group
+            if sys.platform == "linux":
+                identity = _read_linux_process_identity(pid)
+                if identity is None:
+                    continue
+                if identity["pgid"] != process_group or identity["sid"] != process_session:
+                    return None
+                members[pid] = identity
+            else:
+                members[pid] = process_group
     return members if time.monotonic() < deadline else None
 
 
@@ -76,25 +99,73 @@ def _terminate_owned_session(leader_pid: int, leader_pgid: int, child: Optional[
     if not leader_matches:
         return False
     members = _owned_session_members(leader_pgid, leader_pid, deadline)
-    if members is None or members.get(leader_pid) != leader_pgid:
+    if members is None:
         return False
     if child is not None:
         child.poll()
+    if sys.platform == "linux":
+        pidfd_open = getattr(os, "pidfd_open", None)
+        pidfd_send_signal = getattr(signal, "pidfd_send_signal", None)
+        if pidfd_open is None or pidfd_send_signal is None:
+            return False
+        leader_identity = members.get(leader_pid)
+        if not isinstance(leader_identity, dict) or leader_identity.get("pgid") != leader_pgid:
+            return False
+        tokens = []
+        try:
+            ordered_pids = sorted((pid for pid in members if pid != leader_pid), reverse=True) + [leader_pid]
+            for pid in ordered_pids:
+                if time.monotonic() >= deadline:
+                    return False
+                if pid == leader_pid:
+                    if os.getpid() != leader_pid or os.getpgrp() != leader_pgid or os.getsid(0) != leader_pid:
+                        return False
+                elif not isinstance(members[pid], dict):
+                    return False
+                try:
+                    token = int(pidfd_open(pid, 0))
+                except ProcessLookupError:
+                    continue
+                except OSError:
+                    return False
+                current = _read_linux_process_identity(pid)
+                expected = members[pid]
+                if (
+                    current is None
+                    or current.get("pid") != expected.get("pid")
+                    or current.get("sid") != leader_pid
+                    or current.get("start_identity") != expected.get("start_identity")
+                ):
+                    try:
+                        os.close(token)
+                    except OSError:
+                        pass
+                    continue
+                tokens.append((pid, token))
+            for _pid, token in tokens:
+                if time.monotonic() >= deadline:
+                    return False
+                try:
+                    pidfd_send_signal(token, _POSIX_SIGKILL, None, 0)
+                except ProcessLookupError:
+                    continue
+                except OSError:
+                    return False
+            return False
+        finally:
+            for _pid, token in reversed(tokens):
+                try:
+                    os.close(token)
+                except OSError:
+                    pass
+    if members.get(leader_pid) != leader_pgid:
+        return False
     changed_groups = sorted(
         {process_group for pid, process_group in members.items() if pid != leader_pid and process_group != leader_pgid},
         reverse=True,
     )
-    for process_group in changed_groups:
-        if time.monotonic() >= deadline or members.get(process_group) != process_group:
-            return False
-        try:
-            if os.getsid(process_group) != leader_pid or os.getpgid(process_group) != process_group:
-                return False
-            os.killpg(process_group, _POSIX_SIGKILL)
-        except ProcessLookupError:
-            continue
-        except OSError:
-            return False
+    if changed_groups:
+        return False
     if time.monotonic() >= deadline:
         return False
     try:

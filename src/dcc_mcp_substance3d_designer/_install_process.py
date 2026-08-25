@@ -156,10 +156,15 @@ class _ProcessTreeOwner:
     def wait_empty(self, deadline: float) -> bool:
         return not _deadline_expired(deadline)
 
+    def found_live_descendants(self) -> bool:
+        return False
+
 
 class _PosixProcessTreeOwner(_ProcessTreeOwner):
     def __init__(self, process: subprocess.Popen) -> None:
         self._process = process
+        self._found_live_descendants = False
+        self._leader_pidfd = None
         self._leader_pid = int(process.pid)
         try:
             self._pgid = int(os.getpgid(self._leader_pid))
@@ -169,6 +174,20 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
         self._leader_identity = observe_process_identity(self._leader_pid)
         if self._pgid != self._leader_pid or self._sid != self._leader_pid or self._leader_identity is None:
             raise OSError("owned process is not an identity-bound session leader")
+        if sys.platform == "linux":
+            pidfd_open = getattr(os, "pidfd_open", None)
+            pidfd_send_signal = getattr(signal, "pidfd_send_signal", None)
+            if pidfd_open is None or pidfd_send_signal is None:
+                raise OSError("stable Linux process handles are unavailable")
+            try:
+                token = int(pidfd_open(self._leader_pid, 0))
+            except OSError as exc:
+                raise OSError("owned session leader handle is unavailable") from exc
+            current_identity = observe_process_identity(self._leader_pid)
+            if not self._same_process_identity(self._leader_identity, current_identity):
+                os.close(token)
+                raise OSError("owned session leader identity changed during handle binding")
+            self._leader_pidfd = token
 
     def _leader_matches(self) -> bool:
         if self._process.poll() is not None:
@@ -209,10 +228,42 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
             if members is None or self._leader_pid not in members or _deadline_expired(deadline):
                 raise OSError("owned session membership is unavailable")
             descendants = sorted(members - {self._leader_pid}, reverse=True)
+            if descendants:
+                self._found_live_descendants = True
             if not descendants:
                 if not self._leader_matches() or _deadline_expired(deadline):
                     raise OSError("owned session leader identity changed before cleanup")
-                os.kill(self._leader_pid, _POSIX_SIGKILL)
+                if sys.platform == "linux":
+                    if self._leader_pidfd is None:
+                        raise OSError("owned session leader handle is unavailable")
+                    signal.pidfd_send_signal(self._leader_pidfd, _POSIX_SIGKILL, None, 0)
+                else:
+                    os.kill(self._leader_pid, _POSIX_SIGKILL)
+                return
+            if sys.platform != "linux":
+                for pid in descendants:
+                    if _deadline_expired(deadline) or not self._leader_matches():
+                        raise OSError("owned session leader identity changed before cleanup")
+                    expected = observe_process_identity(pid)
+                    if expected is None:
+                        continue
+                    try:
+                        current_pgid = int(os.getpgid(pid))
+                        current_sid = int(os.getsid(pid))
+                    except ProcessLookupError:
+                        continue
+                    except OSError as exc:
+                        raise OSError("owned session member identity is unavailable") from exc
+                    current = observe_process_identity(pid)
+                    if current is None:
+                        continue
+                    if current_sid != self._sid or not self._same_process_identity(expected, current):
+                        raise OSError("owned session member identity changed before cleanup")
+                    if current_pgid != self._pgid:
+                        raise OSError("stable process handle is unavailable for a changed process group")
+                if _deadline_expired(deadline) or not self._leader_matches():
+                    raise OSError("owned session leader identity changed before cleanup")
+                os.killpg(self._pgid, _POSIX_SIGKILL)
                 return
             for pid in descendants:
                 if _deadline_expired(deadline) or not self._leader_matches():
@@ -223,23 +274,47 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
                 if expected is None:
                     continue
                 try:
-                    current_sid = int(os.getsid(pid))
+                    token = int(os.pidfd_open(pid, 0))
                 except ProcessLookupError:
                     continue
                 except OSError as exc:
-                    raise OSError("owned session member identity is unavailable") from exc
-                current = observe_process_identity(pid)
-                if _deadline_expired(deadline):
-                    raise OSError("owned session cleanup deadline expired")
-                if current is None:
-                    continue
-                if current_sid != self._sid or not self._same_process_identity(expected, current):
-                    raise OSError("owned session member identity changed before cleanup")
+                    raise OSError("owned session member handle is unavailable") from exc
                 try:
-                    os.kill(pid, _POSIX_SIGKILL)
-                except ProcessLookupError:
-                    pass
+                    try:
+                        current_sid = int(os.getsid(pid))
+                    except ProcessLookupError:
+                        continue
+                    except OSError as exc:
+                        raise OSError("owned session member identity is unavailable") from exc
+                    current = observe_process_identity(pid)
+                    if _deadline_expired(deadline):
+                        raise OSError("owned session cleanup deadline expired")
+                    if current is None:
+                        continue
+                    if current_sid != self._sid or not self._same_process_identity(expected, current):
+                        raise OSError("owned session member identity changed before cleanup")
+                    try:
+                        signal.pidfd_send_signal(token, _POSIX_SIGKILL, None, 0)
+                    except ProcessLookupError:
+                        pass
+                finally:
+                    try:
+                        os.close(token)
+                    except OSError:
+                        pass
             time.sleep(min(0.01, _deadline_remaining(deadline)))
+
+    def found_live_descendants(self) -> bool:
+        return bool(getattr(self, "_found_live_descendants", False))
+
+    def close(self) -> None:
+        token = getattr(self, "_leader_pidfd", None)
+        if token is not None:
+            try:
+                os.close(token)
+            except OSError:
+                pass
+            self._leader_pidfd = None
 
     def wait_empty(self, deadline: float) -> bool:
         if _deadline_expired(deadline):
@@ -837,6 +912,8 @@ def _run_bounded_command_in_root(
     truncated = len(stdout) > _MAX_PROBE_OUTPUT_BYTES or len(stderr) > _MAX_PROBE_OUTPUT_BYTES
     if not cleanup_ok:
         return {"success": False, "reason": "probe cleanup failed", "truncated": truncated}
+    if owner.found_live_descendants():
+        return {"success": False, "reason": "probe left owned descendants", "truncated": truncated}
     if record is None:
         return {"success": False, "reason": reason or "probe failed", "truncated": truncated}
     returncode = int(record.get("returncode", -1))

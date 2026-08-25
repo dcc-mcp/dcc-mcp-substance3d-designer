@@ -1320,10 +1320,18 @@ def test_owned_supervisor_cleans_live_tree_when_controller_is_sigkilled(tmp_path
 
         os.kill(controller.pid, signal.SIGKILL)
         controller.wait(timeout=3.0)
+
+        def matching_survivors():
+            return {
+                name: pid
+                for name, pid in pids.items()
+                if _install_process.observe_process_identity(pid) == expected[name]
+            }
+
         deadline = time.monotonic() + 5.0
-        while time.monotonic() < deadline and any(_pid_alive(pid) for pid in pids.values()):
+        while time.monotonic() < deadline and matching_survivors():
             time.sleep(0.02)
-        survivors = {name: pid for name, pid in pids.items() if _pid_alive(pid)}
+        survivors = matching_survivors()
         assert not survivors, survivors
     finally:
         if controller.poll() is None:

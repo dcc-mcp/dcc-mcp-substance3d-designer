@@ -330,6 +330,263 @@ def test_process_cleanup_fails_closed_when_tree_does_not_become_empty() -> None:
     assert _install_process._cleanup_owned_process(process, owner) is False
 
 
+@pytest.mark.parametrize("timeout", [float("nan"), float("inf"), float("-inf"), 0.0, 30.01])
+def test_bounded_probe_rejects_invalid_timeout_before_any_setup(
+    timeout: float, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = {"temp": 0, "run": 0, "remove": 0}
+
+    def unexpected_temp(*_args, **_kwargs):
+        calls["temp"] += 1
+        return str(tmp_path / "unexpected")
+
+    def unexpected_run(*_args, **_kwargs):
+        calls["run"] += 1
+        return {"success": True}
+
+    def unexpected_remove(*_args, **_kwargs):
+        calls["remove"] += 1
+        return True
+
+    monkeypatch.setattr(_install_process.tempfile, "mkdtemp", unexpected_temp)
+    monkeypatch.setattr(_install_process, "_run_bounded_command_in_root", unexpected_run)
+    monkeypatch.setattr(_install_process, "_remove_probe_directory", unexpected_remove)
+
+    result = _install_process.run_bounded_command([sys.executable, "-V"], timeout=timeout)
+
+    assert result == {"success": False, "reason": "invalid probe timeout", "truncated": False}
+    assert calls == {"temp": 0, "run": 0, "remove": 0}
+
+
+def test_bounded_probe_setup_expiry_cannot_launch_or_receive_a_second_cleanup_budget(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = [100.0]
+    probe_root = tmp_path / "probe"
+    observed_deadlines = []
+    launched = False
+
+    def delayed_temp(*_args, **_kwargs):
+        probe_root.mkdir()
+        clock[0] = 101.0
+        return str(probe_root)
+
+    def unexpected_run(*_args, **_kwargs):
+        nonlocal launched
+        launched = True
+        return {"success": True}
+
+    def record_remove(root: Path, *, deadline: float):
+        assert root == probe_root
+        observed_deadlines.append(deadline)
+        return False
+
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(_install_process.tempfile, "mkdtemp", delayed_temp)
+    monkeypatch.setattr(_install_process, "_run_bounded_command_in_root", unexpected_run)
+    monkeypatch.setattr(_install_process, "_remove_probe_directory", record_remove)
+
+    result = _install_process.run_bounded_command([sys.executable, "-V"], timeout=0.5)
+
+    assert result == {"success": False, "reason": "probe timed out", "truncated": False}
+    assert launched is False
+    assert observed_deadlines == [100.5]
+
+
+def test_completed_probe_receipt_read_after_deadline_is_still_a_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "probe"
+    root.mkdir()
+    status = root / "status.json"
+    status.write_text('{"state":"completed","returncode":0}', encoding="utf-8")
+    clock = [200.0]
+    original_read_text = Path.read_text
+
+    class FakeProcess:
+        def poll(self):
+            return None
+
+        def wait(self, timeout):
+            assert timeout == 0.0
+            return 0
+
+        def kill(self):
+            return None
+
+    class FakeOwner:
+        def terminate(self):
+            return None
+
+        def wait_empty(self, deadline):
+            assert deadline == 200.5
+            return True
+
+        def close(self):
+            return None
+
+    def delayed_read_text(path: Path, *args, **kwargs):
+        value = original_read_text(path, *args, **kwargs)
+        if path == status:
+            clock[0] = 200.6
+        return value
+
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(Path, "read_text", delayed_read_text)
+    monkeypatch.setattr(
+        _install_process,
+        "_start_owned_process",
+        lambda *_args, **_kwargs: (FakeProcess(), FakeOwner()),
+    )
+
+    result = _install_process._run_bounded_command_in_root([sys.executable, "-V"], root, deadline=200.5)
+
+    assert result == {"success": False, "reason": "probe timed out", "truncated": False}
+
+
+def test_completed_probe_receipt_cannot_win_when_launch_returns_after_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "probe"
+    root.mkdir()
+    (root / "status.json").write_text('{"state":"completed","returncode":0}', encoding="utf-8")
+    clock = [250.0]
+    owner_deadlines = []
+
+    class FakeProcess:
+        def poll(self):
+            return None
+
+        def wait(self, timeout):
+            assert timeout == 0.0
+            return 0
+
+        def kill(self):
+            return None
+
+    class FakeOwner:
+        def terminate(self):
+            return None
+
+        def wait_empty(self, deadline):
+            owner_deadlines.append(deadline)
+            return True
+
+        def close(self):
+            return None
+
+    def delayed_launch(*_args, **_kwargs):
+        clock[0] = 250.6
+        return FakeProcess(), FakeOwner()
+
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(_install_process, "_start_owned_process", delayed_launch)
+
+    result = _install_process._run_bounded_command_in_root([sys.executable, "-V"], root, deadline=250.5)
+
+    assert result == {"success": False, "reason": "probe timed out", "truncated": False}
+    assert owner_deadlines == [250.5]
+
+
+def test_completed_probe_output_read_after_deadline_is_still_a_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "probe"
+    root.mkdir()
+    (root / "status.json").write_text('{"state":"completed","returncode":0}', encoding="utf-8")
+    stdout_path = root / "stdout.bin"
+    stdout_path.write_bytes(b"complete")
+    clock = [275.0]
+    original_read_bytes = Path.read_bytes
+
+    class FakeProcess:
+        def poll(self):
+            return None
+
+        def wait(self, timeout):
+            assert timeout > 0.0
+            return 0
+
+        def kill(self):
+            return None
+
+    class FakeOwner:
+        def terminate(self):
+            return None
+
+        def wait_empty(self, _deadline):
+            return True
+
+        def close(self):
+            return None
+
+    def delayed_read_bytes(path: Path):
+        value = original_read_bytes(path)
+        if path == stdout_path:
+            clock[0] = 275.6
+        return value
+
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(Path, "read_bytes", delayed_read_bytes)
+    monkeypatch.setattr(
+        _install_process,
+        "_start_owned_process",
+        lambda *_args, **_kwargs: (FakeProcess(), FakeOwner()),
+    )
+
+    result = _install_process._run_bounded_command_in_root([sys.executable, "-V"], root, deadline=275.5)
+
+    assert result == {"success": False, "reason": "probe timed out", "truncated": False}
+
+
+def test_probe_cleanup_reap_and_remove_share_the_expired_absolute_deadline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = [300.0]
+    wait_timeouts = []
+    owner_deadlines = []
+
+    class FakeProcess:
+        def poll(self):
+            return None
+
+        def kill(self):
+            return None
+
+        def wait(self, timeout):
+            wait_timeouts.append(timeout)
+            return 0
+
+    class FakeOwner:
+        def terminate(self):
+            clock[0] = 301.0
+
+        def wait_empty(self, deadline):
+            owner_deadlines.append(deadline)
+            return False
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: clock[0])
+    assert _install_process._cleanup_owned_process(FakeProcess(), FakeOwner(), deadline=300.5) is False
+    assert wait_timeouts == [0.0]
+    assert owner_deadlines == [300.5]
+
+    probe_root = tmp_path / "probe"
+    probe_root.mkdir()
+    calls = 0
+
+    def locked_remove(_path):
+        nonlocal calls
+        calls += 1
+        raise PermissionError("synthetic lock")
+
+    monkeypatch.setattr(_install_process.shutil, "rmtree", locked_remove)
+    assert _install_process._remove_probe_directory(probe_root, deadline=300.5) is False
+    assert calls == 1
+
+
 def test_darwin_process_identity_distinguishes_same_second_microsecond_reuse() -> None:
     assert ctypes.sizeof(_install_process._DarwinProcBsdInfo) == 136
     observations = iter((123_456, 123_457))

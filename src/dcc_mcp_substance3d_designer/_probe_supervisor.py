@@ -23,7 +23,7 @@ def _write_status(path: Path, payload: dict) -> None:
     os.replace(str(temporary), str(path))
 
 
-def _owned_session_members(pgid: int, sid: int, deadline: float) -> Optional[set[int]]:
+def _owned_session_members(pgid: int, sid: int, deadline: float) -> Optional[dict[int, int]]:
     remaining = deadline - time.monotonic()
     if pgid <= 0 or sid <= 0 or remaining <= 0.0:
         return None
@@ -45,7 +45,7 @@ def _owned_session_members(pgid: int, sid: int, deadline: float) -> Optional[set
         return None
     if time.monotonic() >= deadline or completed.returncode != 0 or len(completed.stdout) > _MAX_SNAPSHOT_BYTES:
         return None
-    members = set()
+    members = {}
     for line in completed.stdout.splitlines():
         if time.monotonic() >= deadline:
             return None
@@ -63,41 +63,46 @@ def _owned_session_members(pgid: int, sid: int, deadline: float) -> Optional[set
         if time.monotonic() >= deadline:
             return None
         if process_group == pgid or process_session == sid:
-            members.add(pid)
+            members[pid] = process_group
     return members if time.monotonic() < deadline else None
 
 
 def _terminate_owned_session(leader_pid: int, leader_pgid: int, child: Optional[subprocess.Popen]) -> bool:
     deadline = time.monotonic() + _PARENT_DEATH_CLEANUP_SECONDS
-    while time.monotonic() < deadline:
+    try:
+        leader_matches = os.getpid() == leader_pid and os.getpgrp() == leader_pgid and os.getsid(0) == leader_pid
+    except OSError:
+        return False
+    if not leader_matches:
+        return False
+    members = _owned_session_members(leader_pgid, leader_pid, deadline)
+    if members is None or members.get(leader_pid) != leader_pgid:
+        return False
+    if child is not None:
+        child.poll()
+    changed_groups = sorted(
+        {process_group for pid, process_group in members.items() if pid != leader_pid and process_group != leader_pgid},
+        reverse=True,
+    )
+    for process_group in changed_groups:
+        if time.monotonic() >= deadline or members.get(process_group) != process_group:
+            return False
         try:
-            leader_matches = os.getpid() == leader_pid and os.getpgrp() == leader_pgid and os.getsid(0) == leader_pid
+            if os.getsid(process_group) != leader_pid or os.getpgid(process_group) != process_group:
+                return False
+            os.killpg(process_group, _POSIX_SIGKILL)
+        except ProcessLookupError:
+            continue
         except OSError:
             return False
-        if not leader_matches:
+    if time.monotonic() >= deadline:
+        return False
+    try:
+        if os.getpid() != leader_pid or os.getpgrp() != leader_pgid or os.getsid(0) != leader_pid:
             return False
-        members = _owned_session_members(leader_pgid, leader_pid, deadline)
-        if members is None or leader_pid not in members:
-            return False
-        if child is not None:
-            child.poll()
-        descendants = sorted(members - {leader_pid}, reverse=True)
-        if not descendants:
-            return True
-        for pid in descendants:
-            if time.monotonic() >= deadline:
-                return False
-            try:
-                if os.getsid(pid) != leader_pid:
-                    return False
-                os.kill(pid, _POSIX_SIGKILL)
-            except ProcessLookupError:
-                pass
-            except OSError:
-                return False
-        if child is not None:
-            child.poll()
-        time.sleep(min(0.01, max(0.0, deadline - time.monotonic())))
+        os.killpg(leader_pgid, _POSIX_SIGKILL)
+    except OSError:
+        return False
     return False
 
 

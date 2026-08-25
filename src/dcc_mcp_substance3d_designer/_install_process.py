@@ -21,6 +21,7 @@ from typing import Any, Dict, Optional, Sequence
 _MAX_PROBE_OUTPUT_BYTES = 256 * 1024
 _MIN_PROBE_TIMEOUT_SECONDS = 0.1
 _MAX_PROBE_TIMEOUT_SECONDS = 30.0
+_MAX_POSIX_PROCESS_ID_DIGITS = 20
 _PROC_PIDTBSDINFO = 3
 
 
@@ -88,7 +89,7 @@ def _read_darwin_bsd_identity(pid: int, proc_pidinfo) -> Optional[Dict[str, Any]
 
 def _list_posix_process_group_members(pgid: int, *, deadline: float) -> Optional[set[int]]:
     """Return an exact read-only process-group snapshot or fail closed."""
-    if pgid <= 0:
+    if pgid <= 0 or _deadline_expired(deadline):
         return None
     remaining = _deadline_remaining(deadline)
     if remaining <= 0.0:
@@ -118,9 +119,14 @@ def _list_posix_process_group_members(pgid: int, *, deadline: float) -> Optional
         fields = line.split()
         if not fields:
             continue
-        if len(fields) != 2 or not all(field.isascii() and field.isdecimal() for field in fields):
+        if len(fields) != 2 or not all(
+            len(field) <= _MAX_POSIX_PROCESS_ID_DIGITS and field.isascii() and field.isdecimal() for field in fields
+        ):
             return None
-        process_pid, process_group = (int(field) for field in fields)
+        try:
+            process_pid, process_group = (int(field) for field in fields)
+        except (ValueError, OverflowError):
+            return None
         if process_group == pgid:
             members.add(process_pid)
     return members if not _deadline_expired(deadline) else None

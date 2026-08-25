@@ -797,6 +797,32 @@ def test_posix_group_snapshot_fails_closed_before_or_after_deadline(monkeypatch:
     assert calls == 1
 
 
+@pytest.mark.parametrize("deadline", [float("nan"), float("inf"), float("-inf")])
+def test_posix_group_snapshot_rejects_nonfinite_deadline_before_io(
+    monkeypatch: pytest.MonkeyPatch, deadline: float
+) -> None:
+    calls = 0
+
+    def forbidden_run(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("nonfinite deadline reached process I/O")
+
+    monkeypatch.setattr(_install_process.subprocess, "run", forbidden_run)
+
+    assert _install_process._list_posix_process_group_members(9123, deadline=deadline) is None
+    assert calls == 0
+
+
+def test_posix_group_snapshot_rejects_oversized_decimal_pid(monkeypatch: pytest.MonkeyPatch) -> None:
+    oversized_pid = "9" * 5000
+    completed = SimpleNamespace(returncode=0, stdout=f"{oversized_pid} 9123\n")
+    monkeypatch.setattr(_install_process.subprocess, "run", lambda *_args, **_kwargs: completed)
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
+
+    assert _install_process._list_posix_process_group_members(9123, deadline=101.0) is None
+
+
 def test_listener_observation_binds_an_exact_direct_child_process() -> None:
     script = (
         "import socket,time; "

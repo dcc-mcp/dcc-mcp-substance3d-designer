@@ -442,6 +442,13 @@ def test_posix_owner_wait_empty_rejects_a_surviving_group_member(monkeypatch: py
     assert owner.wait_empty(0.0) is False
 
 
+def test_posix_group_snapshot_accepts_bsd_ps_empty_heading(monkeypatch: pytest.MonkeyPatch) -> None:
+    completed = SimpleNamespace(returncode=0, stdout="\n  9912  9123\n  9913  9913\n")
+    monkeypatch.setattr(_install_process.subprocess, "run", lambda *_args, **_kwargs: completed)
+
+    assert _install_process._list_posix_process_group_members(9123) == {9912}
+
+
 def test_listener_observation_binds_an_exact_direct_child_process() -> None:
     script = (
         "import socket,time; "

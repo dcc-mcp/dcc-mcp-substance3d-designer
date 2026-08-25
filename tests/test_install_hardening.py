@@ -361,6 +361,49 @@ def test_darwin_process_identity_distinguishes_same_second_microsecond_reuse() -
     assert first != second
 
 
+def test_darwin_observation_uses_libproc_without_platform_local_shadowing(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeFunction:
+        def __init__(self, callback):
+            self.callback = callback
+            self.argtypes = None
+            self.restype = None
+
+        def __call__(self, *args):
+            return self.callback(*args)
+
+    def fake_proc_pidpath(pid, buffer, size):
+        assert pid == 9123
+        payload = b"/usr/bin/python3\0"
+        assert len(payload) <= size
+        ctypes.memmove(buffer, payload, len(payload))
+        return len(payload) - 1
+
+    def fake_proc_pidinfo(pid, flavor, arg, buffer, size):
+        assert flavor == _install_process._PROC_PIDTBSDINFO
+        assert arg == 0
+        info = _install_process._DarwinProcBsdInfo()
+        info.pbi_pid = pid
+        info.pbi_ppid = 42
+        info.pbi_start_tvsec = 1_777_000_000
+        info.pbi_start_tvusec = 123_456
+        ctypes.memmove(buffer, ctypes.byref(info), size)
+        return size
+
+    fake_libproc = SimpleNamespace(
+        proc_pidpath=FakeFunction(fake_proc_pidpath),
+        proc_pidinfo=FakeFunction(fake_proc_pidinfo),
+    )
+    monkeypatch.setattr(_install_process.sys, "platform", "darwin")
+    monkeypatch.setattr(_install_process.ctypes, "CDLL", lambda *_args, **_kwargs: fake_libproc)
+
+    identity = _install_process.observe_process_identity(9123)
+
+    assert identity is not None
+    assert identity["pid"] == 9123
+    assert identity["parent_pid"] == 42
+    assert identity["start_identity"] == "darwin-proc-bsdinfo:1777000000:123456"
+
+
 @pytest.mark.parametrize(
     ("returned_size", "observed_pid", "parent_pid", "seconds", "microseconds"),
     [

@@ -638,7 +638,6 @@ def observe_process_identity(pid: int) -> Optional[Dict[str, Any]]:
     if pid <= 0:
         return None
     if sys.platform == "win32":
-        import ctypes
         from ctypes import wintypes
 
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)

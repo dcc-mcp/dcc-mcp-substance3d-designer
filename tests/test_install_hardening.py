@@ -694,9 +694,33 @@ def test_posix_owner_wait_empty_rejects_a_surviving_group_member(monkeypatch: py
     owner = object.__new__(_install_process._PosixProcessTreeOwner)
     owner._process = SimpleNamespace(wait=lambda timeout: 0)
     owner._pgid = 9123
-    monkeypatch.setattr(_install_process, "_list_posix_process_group_members", lambda _pgid: {9912})
+    monkeypatch.setattr(
+        _install_process,
+        "_list_posix_process_group_members",
+        lambda _pgid, *, deadline: {9912},
+    )
 
     assert owner.wait_empty(0.0) is False
+
+
+def test_posix_owner_threads_the_same_deadline_into_group_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [150.0]
+    wait_timeouts = []
+    snapshot_deadlines = []
+    owner = object.__new__(_install_process._PosixProcessTreeOwner)
+    owner._process = SimpleNamespace(wait=lambda timeout: wait_timeouts.append(timeout))
+    owner._pgid = 9123
+
+    def empty_snapshot(_pgid: int, *, deadline: float):
+        snapshot_deadlines.append(deadline)
+        return set()
+
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(_install_process, "_list_posix_process_group_members", empty_snapshot)
+
+    assert owner.wait_empty(150.001) is True
+    assert wait_timeouts == [pytest.approx(0.001)]
+    assert snapshot_deadlines == [150.001]
 
 
 def test_posix_owner_live_match_survives_exec_and_parent_reobservation(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -731,8 +755,46 @@ def test_posix_owner_live_match_survives_exec_and_parent_reobservation(monkeypat
 def test_posix_group_snapshot_accepts_bsd_ps_empty_heading(monkeypatch: pytest.MonkeyPatch) -> None:
     completed = SimpleNamespace(returncode=0, stdout="\n  9912  9123\n  9913  9913\n")
     monkeypatch.setattr(_install_process.subprocess, "run", lambda *_args, **_kwargs: completed)
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
 
-    assert _install_process._list_posix_process_group_members(9123) == {9912}
+    assert _install_process._list_posix_process_group_members(9123, deadline=101.0) == {9912}
+
+
+def test_posix_group_snapshot_uses_only_the_exact_remaining_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [200.0]
+    observed_timeouts = []
+    completed = SimpleNamespace(returncode=0, stdout="  9912  9123\n")
+
+    def bounded_run(*_args, **kwargs):
+        observed_timeouts.append(kwargs["timeout"])
+        return completed
+
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(_install_process.subprocess, "run", bounded_run)
+
+    assert _install_process._list_posix_process_group_members(9123, deadline=200.001) == {9912}
+    assert observed_timeouts == [pytest.approx(0.001)]
+
+
+def test_posix_group_snapshot_fails_closed_before_or_after_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = [300.001]
+    calls = 0
+
+    def delayed_run(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        clock[0] = 301.0
+        return SimpleNamespace(returncode=0, stdout="")
+
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(_install_process.subprocess, "run", delayed_run)
+
+    assert _install_process._list_posix_process_group_members(9123, deadline=300.0) is None
+    assert calls == 0
+
+    clock[0] = 300.0
+    assert _install_process._list_posix_process_group_members(9123, deadline=300.001) is None
+    assert calls == 1
 
 
 def test_listener_observation_binds_an_exact_direct_child_process() -> None:

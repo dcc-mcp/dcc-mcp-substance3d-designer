@@ -78,6 +78,19 @@ def _canonical_distribution(value: str) -> str:
     return re.sub(r"[-_.]+", "-", value).casefold()
 
 
+def _yaml_mapping_value(node: yaml.Node, key: str, label: str) -> yaml.Node:
+    if not isinstance(node, yaml.MappingNode):
+        raise MetadataError(f"{label} must be a mapping")
+    matches = [
+        value_node
+        for key_node, value_node in node.value
+        if isinstance(key_node, yaml.ScalarNode) and key_node.value == key
+    ]
+    if len(matches) != 1:
+        raise MetadataError(f"{label}.{key} must occur exactly once")
+    return matches[0]
+
+
 def _skill_version(text: str, label: str) -> str:
     parts = text.split("---", 2)
     if len(parts) != 3 or parts[0].strip():
@@ -97,11 +110,30 @@ def _skill_version(text: str, label: str) -> str:
     version = dcc_mcp.get("version")
     if not isinstance(version, str) or not version:
         raise MetadataError(f"{label} Skill metadata.metadata.dcc-mcp.version must be a string")
-    marker_lines = [line for line in parts[1].splitlines() if RELEASE_MARKER in line]
+    metadata_node = yaml.compose(parts[1], Loader=_UniqueKeyLoader)
+    if metadata_node is None:
+        raise MetadataError(f"{label} Skill metadata must be a mapping")
+    dcc_metadata_node = _yaml_mapping_value(metadata_node, "metadata", f"{label} Skill metadata")
+    dcc_mcp_node = _yaml_mapping_value(
+        dcc_metadata_node,
+        "dcc-mcp",
+        f"{label} Skill metadata.metadata",
+    )
+    version_node = _yaml_mapping_value(
+        dcc_mcp_node,
+        "version",
+        f"{label} Skill metadata.metadata.dcc-mcp",
+    )
+    if not isinstance(version_node, yaml.ScalarNode):
+        raise MetadataError(f"{label} Skill metadata.metadata.dcc-mcp.version must be a scalar")
+
+    frontmatter_lines = parts[1].splitlines()
+    marker_lines = [(index, line) for index, line in enumerate(frontmatter_lines) if RELEASE_MARKER in line]
     if len(marker_lines) != 1:
         raise MetadataError(f"{label} Skill metadata version must have exactly one release-please marker")
-    marker = SKILL_MARKER_RE.fullmatch(marker_lines[0])
-    if marker is None or marker.group(1) != version:
+    marker_index, marker_line = marker_lines[0]
+    marker = SKILL_MARKER_RE.fullmatch(marker_line)
+    if marker_index != version_node.start_mark.line or marker is None or marker.group(1) != version:
         raise MetadataError(f"{label} Skill metadata release-please marker must bind the declared version")
     return version
 

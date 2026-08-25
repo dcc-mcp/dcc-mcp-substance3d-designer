@@ -7,11 +7,120 @@ import sys
 import threading
 import time
 import types
+import urllib.error
+import urllib.request
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@contextmanager
+def _owned_test_gateway(tmp_path, monkeypatch):
+    """Run one isolated gateway whose complete process tree is owned by this test."""
+    from dcc_mcp_server import binary_path
+
+    from dcc_mcp_substance3d_designer import _install_process
+
+    registry_dir = tmp_path / "gateway-registry"
+    registry_dir.mkdir()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        gateway_port = reservation.getsockname()[1]
+    gateway_url = f"http://127.0.0.1:{gateway_port}"
+    mcp_url = gateway_url + "/mcp"
+    assert _install_process.observe_listener_identity(mcp_url) is None
+
+    server_binary = Path(binary_path()).resolve(strict=True)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "DCC_MCP_GATEWAY_PORT": str(gateway_port),
+            "DCC_MCP_GATEWAY_IDLE_TIMEOUT_SECS": "0",
+            "DCC_MCP_REGISTRY_DIR": str(registry_dir),
+        }
+    )
+    environment.pop("DCC_MCP_GATEWAY_PERSIST", None)
+    for name in ("DCC_MCP_GATEWAY_PORT", "DCC_MCP_GATEWAY_IDLE_TIMEOUT_SECS", "DCC_MCP_REGISTRY_DIR"):
+        monkeypatch.setenv(name, environment[name])
+    monkeypatch.delenv("DCC_MCP_GATEWAY_PERSIST", raising=False)
+
+    command = [
+        str(server_binary),
+        "gateway",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(gateway_port),
+        "--remote-port",
+        "0",
+        "--registry-dir",
+        str(registry_dir),
+        "--gateway-idle-timeout-secs",
+        "0",
+        "--no-admin",
+    ]
+    process = None
+    owner = None
+    expected_process = None
+    observed_listener = None
+    cleanup_error = None
+    try:
+        process, owner = _install_process._start_owned_process(command, env=environment, cwd=tmp_path)
+        expected_process = _install_process.observe_process_identity(process.pid)
+        assert expected_process is not None
+        assert expected_process["pid"] == process.pid
+        assert Path(expected_process["executable"]).resolve() == server_binary
+
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                break
+            observed_listener = _install_process.observe_listener_identity(mcp_url)
+            if observed_listener == {**expected_process, "listener_port": gateway_port}:
+                try:
+                    with urllib.request.urlopen(gateway_url + "/health", timeout=0.25) as response:
+                        if response.status == 200:
+                            break
+                except (urllib.error.URLError, OSError):
+                    pass
+            time.sleep(0.02)
+        else:
+            raise AssertionError("owned test gateway readiness timed out")
+        assert process.poll() is None
+        assert observed_listener == {**expected_process, "listener_port": gateway_port}
+
+        yield {
+            "pid": process.pid,
+            "port": gateway_port,
+            "process_identity": expected_process,
+            "listener_identity": observed_listener,
+        }
+    finally:
+        if process is not None and owner is not None:
+            current_process = _install_process.observe_process_identity(process.pid)
+            current_listener = _install_process.observe_listener_identity(mcp_url)
+            if process.poll() is None and (
+                current_process != expected_process or current_listener != observed_listener
+            ):
+                cleanup_error = "owned gateway identity changed before cleanup"
+            if not _install_process._cleanup_owned_process(process, owner):
+                cleanup_error = cleanup_error or "owned gateway process-tree cleanup failed"
+
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                if (
+                    _install_process.observe_process_identity(process.pid) is None
+                    and _install_process.observe_listener_identity(mcp_url) is None
+                ):
+                    break
+                time.sleep(0.02)
+            else:
+                cleanup_error = cleanup_error or "owned gateway PID or listener survived cleanup"
+        if cleanup_error is not None:
+            raise AssertionError(cleanup_error)
 
 
 @pytest.fixture(autouse=True)
@@ -361,15 +470,10 @@ def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, mo
         os.pathsep.join(part for part in (str(ROOT / "src"), inherited) if part),
     )
     monkeypatch.setenv("DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT", str(install_root))
-    monkeypatch.setenv("DCC_MCP_REGISTRY_DIR", str(tmp_path / "registry"))
     monkeypatch.setenv("DCC_MCP_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("DCC_MCP_DISABLE_FILE_LOGGING", "1")
     monkeypatch.setenv("DCC_MCP_DISABLE_JOB_PERSISTENCE", "1")
     monkeypatch.setenv("DCC_MCP_DISABLE_TELEMETRY", "1")
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reservation:
-        reservation.bind(("127.0.0.1", 0))
-        gateway_port = reservation.getsockname()[1]
-    monkeypatch.setenv("DCC_MCP_GATEWAY_PORT", str(gateway_port))
 
     color_engine = types.SimpleNamespace(
         getName=lambda: "legacy",
@@ -396,7 +500,7 @@ def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, mo
     )
 
     from dcc_mcp_substance3d_designer import _install_preflight
-    from dcc_mcp_substance3d_designer._install_process import observe_process_identity
+    from dcc_mcp_substance3d_designer._install_process import observe_listener_identity, observe_process_identity
     from dcc_mcp_substance3d_designer.dispatcher import DesignerQtDispatcher
     from dcc_mcp_substance3d_designer.install_cli import main
     from dcc_mcp_substance3d_designer.server import start_server, stop_server
@@ -422,38 +526,56 @@ def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, mo
     )
 
     dispatcher = DesignerQtDispatcher()
-    start_server(dispatcher, port=0)
-    try:
-        common = ["--dcc-path", str(host), "--python", sys.executable, "--json"]
+    with _owned_test_gateway(tmp_path, monkeypatch) as gateway:
+        start_server(dispatcher, port=0)
+        try:
+            common = ["--dcc-path", str(host), "--python", sys.executable, "--json"]
 
-        def run_while_pumping(arguments):
-            result = []
-            worker = threading.Thread(target=lambda: result.append(main(arguments)))
-            worker.start()
-            deadline = time.monotonic() + 5
-            while worker.is_alive() and time.monotonic() < deadline:
-                dispatcher.drain_queue(5)
-                time.sleep(0.01)
-            worker.join(timeout=1)
-            assert not worker.is_alive()
-            return result[0]
+            def run_while_pumping(arguments):
+                result = []
+                worker = threading.Thread(target=lambda: result.append(main(arguments)))
+                worker.start()
+                deadline = time.monotonic() + 5
+                while worker.is_alive() and time.monotonic() < deadline:
+                    dispatcher.drain_queue(5)
+                    time.sleep(0.01)
+                worker.join(timeout=1)
+                assert not worker.is_alive()
+                return result[0]
 
-        assert run_while_pumping(["install", *common, "--yes"]) == 0
-        installed = json.loads(capsys.readouterr().out)
-        assert installed["verify"] == {
-            "directly_usable": True,
-            "failure_stage": None,
-            "failure_reason": None,
-            "probe_tool": "designer_diagnostics__ping",
-        }
-        assert probe_calls["version"] > 0
+            assert run_while_pumping(["install", *common, "--yes"]) == 0
+            installed = json.loads(capsys.readouterr().out)
+            assert installed["verify"] == {
+                "directly_usable": True,
+                "failure_stage": None,
+                "failure_reason": None,
+                "probe_tool": "designer_diagnostics__ping",
+            }
+            assert probe_calls["version"] > 0
 
-        assert run_while_pumping(["verify", *common]) == 0
-        verified = json.loads(capsys.readouterr().out)
-        assert verified["verify"]["directly_usable"] is True
-        assert verified["verify"]["probe_tool"] == "designer_diagnostics__ping"
-    finally:
-        stop_server()
+            assert run_while_pumping(["verify", *common]) == 0
+            verified = json.loads(capsys.readouterr().out)
+            assert verified["verify"]["directly_usable"] is True
+            assert verified["verify"]["probe_tool"] == "designer_diagnostics__ping"
+        finally:
+            stop_server()
+
+    assert observe_process_identity(gateway["pid"]) is None
+    assert observe_listener_identity(f"http://127.0.0.1:{gateway['port']}/mcp") is None
+
+
+@pytest.mark.parametrize("failure", [TimeoutError("synthetic timeout"), KeyboardInterrupt()])
+def test_owned_gateway_cleanup_survives_timeout_and_cancellation(tmp_path, monkeypatch, failure):
+    from dcc_mcp_substance3d_designer._install_process import observe_listener_identity, observe_process_identity
+
+    gateway = None
+    with pytest.raises(type(failure)):
+        with _owned_test_gateway(tmp_path, monkeypatch) as gateway:
+            raise failure
+
+    assert gateway is not None
+    assert observe_process_identity(gateway["pid"]) is None
+    assert observe_listener_identity(f"http://127.0.0.1:{gateway['port']}/mcp") is None
 
 
 def test_packaged_designer_plugin_captures_bootstrap_failures():

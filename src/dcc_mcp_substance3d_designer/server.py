@@ -19,7 +19,13 @@ _server: Optional["SubstanceDesignerMcpServer"] = None
 class SubstanceDesignerMcpServer(DccServerBase):
     """DCC-MCP server hosted by a running Substance 3D Designer process."""
 
-    def __init__(self, host_dispatcher: object, port: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        host_dispatcher: object,
+        port: Optional[int] = None,
+        *,
+        enable_gateway_failover: bool = True,
+    ) -> None:
         try:
             import sd  # Lazy import: provided by Designer.
 
@@ -37,6 +43,7 @@ class SubstanceDesignerMcpServer(DccServerBase):
             execution_bridge=HostExecutionBridge(dispatcher=host_dispatcher),
             enable_file_logging=True,
             enable_telemetry=True,
+            enable_gateway_failover=enable_gateway_failover,
         )
         super().__init__(options=options)
 
@@ -64,12 +71,21 @@ class SubstanceDesignerMcpServer(DccServerBase):
             return "Substance 3D Designer"
 
 
-def start_server(host_dispatcher: object, port: Optional[int] = None) -> SubstanceDesignerMcpServer:
+def start_server(
+    host_dispatcher: object,
+    port: Optional[int] = None,
+    *,
+    enable_gateway_failover: bool = True,
+) -> SubstanceDesignerMcpServer:
     """Start the singleton server after the host Qt dispatcher is installed."""
     global _server
     if _server is not None and _server.is_running:
         return _server
-    _server = SubstanceDesignerMcpServer(host_dispatcher, port)
+    _server = SubstanceDesignerMcpServer(
+        host_dispatcher,
+        port,
+        enable_gateway_failover=enable_gateway_failover,
+    )
     _server.register_builtin_actions()
     _server.start()
     return _server

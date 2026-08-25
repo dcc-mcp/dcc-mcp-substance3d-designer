@@ -17,11 +17,16 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@contextmanager
-def _owned_test_gateway(tmp_path, monkeypatch):
-    """Run one isolated gateway whose complete process tree is owned by this test."""
-    from dcc_mcp_server import binary_path
+def _require_typed_test_runtime(python_executable):
+    """Validate exact installed runtime provenance before any gateway/server I/O."""
+    from dcc_mcp_substance3d_designer import _install_preflight
 
+    return _install_preflight.query_python(Path(python_executable).resolve(strict=True))
+
+
+@contextmanager
+def _owned_test_gateway(tmp_path, monkeypatch, runtime):
+    """Run one isolated gateway whose complete process tree is owned by this test."""
     from dcc_mcp_substance3d_designer import _install_process
 
     registry_dir = tmp_path / "gateway-registry"
@@ -33,7 +38,7 @@ def _owned_test_gateway(tmp_path, monkeypatch):
     mcp_url = gateway_url + "/mcp"
     assert _install_process.observe_listener_identity(mcp_url) is None
 
-    server_binary = Path(binary_path()).resolve(strict=True)
+    server_binary = Path(runtime["server_binary"]).resolve(strict=True)
     environment = os.environ.copy()
     environment.update(
         {
@@ -68,7 +73,12 @@ def _owned_test_gateway(tmp_path, monkeypatch):
     observed_listener = None
     cleanup_error = None
     try:
-        process, owner = _install_process._start_owned_process(command, env=environment, cwd=tmp_path)
+        process, owner = _install_process._start_owned_supervised_process(
+            command,
+            env=environment,
+            cwd=tmp_path,
+            root=tmp_path / "gateway-supervisor",
+        )
         expected_process = _install_process.observe_process_identity(process.pid)
         assert expected_process is not None
         assert expected_process["pid"] == process.pid
@@ -474,6 +484,9 @@ def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, mo
     monkeypatch.setenv("DCC_MCP_DISABLE_FILE_LOGGING", "1")
     monkeypatch.setenv("DCC_MCP_DISABLE_JOB_PERSISTENCE", "1")
     monkeypatch.setenv("DCC_MCP_DISABLE_TELEMETRY", "1")
+    monkeypatch.setenv("DCC_MCP_INSTALL_VERIFY_TIMEOUT", "10")
+
+    runtime = _require_typed_test_runtime(sys.executable)
 
     color_engine = types.SimpleNamespace(
         getName=lambda: "legacy",
@@ -499,7 +512,7 @@ def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, mo
         types.SimpleNamespace(getContext=lambda: types.SimpleNamespace(getSDApplication=lambda: app)),
     )
 
-    from dcc_mcp_substance3d_designer import _install_preflight
+    from dcc_mcp_substance3d_designer import _install_preflight, _install_process
     from dcc_mcp_substance3d_designer._install_process import observe_listener_identity, observe_process_identity
     from dcc_mcp_substance3d_designer.dispatcher import DesignerQtDispatcher
     from dcc_mcp_substance3d_designer.install_cli import main
@@ -525,9 +538,10 @@ def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, mo
         ),
     )
 
+    foreign_gateway_before = _install_process.observe_listener_identity("http://127.0.0.1:9765/mcp")
     dispatcher = DesignerQtDispatcher()
-    with _owned_test_gateway(tmp_path, monkeypatch) as gateway:
-        start_server(dispatcher, port=0)
+    with _owned_test_gateway(tmp_path, monkeypatch, runtime) as gateway:
+        start_server(dispatcher, port=0, enable_gateway_failover=False)
         try:
             common = ["--dcc-path", str(host), "--python", sys.executable, "--json"]
 
@@ -535,7 +549,7 @@ def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, mo
                 result = []
                 worker = threading.Thread(target=lambda: result.append(main(arguments)))
                 worker.start()
-                deadline = time.monotonic() + 5
+                deadline = time.monotonic() + 20
                 while worker.is_alive() and time.monotonic() < deadline:
                     dispatcher.drain_queue(5)
                     time.sleep(0.01)
@@ -562,20 +576,58 @@ def test_verify_proves_direct_usability_with_a_typed_designer_probe(tmp_path, mo
 
     assert observe_process_identity(gateway["pid"]) is None
     assert observe_listener_identity(f"http://127.0.0.1:{gateway['port']}/mcp") is None
+    foreign_gateway_after = _install_process.observe_listener_identity("http://127.0.0.1:9765/mcp")
+    for foreign_gateway in (foreign_gateway_before, foreign_gateway_after):
+        if foreign_gateway is not None:
+            assert foreign_gateway["listener_port"] == 9765
+            assert foreign_gateway["pid"] != gateway["pid"]
 
 
 @pytest.mark.parametrize("failure", [TimeoutError("synthetic timeout"), KeyboardInterrupt()])
 def test_owned_gateway_cleanup_survives_timeout_and_cancellation(tmp_path, monkeypatch, failure):
     from dcc_mcp_substance3d_designer._install_process import observe_listener_identity, observe_process_identity
 
+    runtime = _require_typed_test_runtime(sys.executable)
     gateway = None
     with pytest.raises(type(failure)):
-        with _owned_test_gateway(tmp_path, monkeypatch) as gateway:
+        with _owned_test_gateway(tmp_path, monkeypatch, runtime) as gateway:
             raise failure
 
     assert gateway is not None
     assert observe_process_identity(gateway["pid"]) is None
     assert observe_listener_identity(f"http://127.0.0.1:{gateway['port']}/mcp") is None
+
+
+def test_runtime_mismatch_fails_before_gateway_or_server_io(tmp_path, monkeypatch):
+    from dcc_mcp_substance3d_designer import _install_preflight, _install_process, server
+    from dcc_mcp_substance3d_designer.__version__ import __version__
+    from dcc_mcp_substance3d_designer._install_model import LifecycleFailure
+
+    effects = []
+    mismatch = {
+        "python_version": "{}.{}.{}".format(*sys.version_info[:3]),
+        "executable": str(Path(sys.executable).resolve()),
+        "adapter_version": __version__,
+        "adapter_dist_version": "9.9.9",
+    }
+    monkeypatch.setattr(
+        _install_preflight,
+        "_run_bounded_command",
+        lambda *_args, **_kwargs: {"success": True, "stdout": json.dumps(mismatch), "stderr": ""},
+    )
+    monkeypatch.setattr(
+        _install_process,
+        "_start_owned_supervised_process",
+        lambda *_args, **_kwargs: effects.append("gateway") or (_ for _ in ()).throw(AssertionError()),
+        raising=False,
+    )
+    monkeypatch.setattr(server, "start_server", lambda *_args, **_kwargs: effects.append("server"))
+
+    with pytest.raises(LifecycleFailure, match="installed distribution"):
+        _require_typed_test_runtime(sys.executable)
+
+    assert effects == []
+    assert not tmp_path.joinpath("gateway-supervisor").exists()
 
 
 def test_packaged_designer_plugin_captures_bootstrap_failures():

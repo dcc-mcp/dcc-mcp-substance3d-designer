@@ -406,6 +406,74 @@ def test_interpreter_probe_timeout_terminates_root_and_descendant(tmp_path: Path
     assert not _pid_alive(descendant_pid)
 
 
+def test_owned_supervisor_cleans_replacement_after_command_root_exits(tmp_path: Path) -> None:
+    """The durable owner outlives a root that hands work to a replacement child."""
+    ready = tmp_path / "replacement.json"
+    release = tmp_path / "release-root"
+    supervisor_root = tmp_path / "supervisor"
+    helper_python = Path(getattr(sys, "_base_executable", sys.executable)).resolve()
+    script = (
+        "import pathlib,subprocess,sys,time; "
+        "replacement=subprocess.Popen([sys.executable,'-c',"
+        "'import json,os,pathlib,socket,sys,time; '"
+        "+'listener=socket.socket(); listener.bind((\"127.0.0.1\",0)); listener.listen(); '"
+        '+\'pathlib.Path(sys.argv[1]).write_text(json.dumps({"pid":os.getpid(),"port":listener.getsockname()[1]})); \''
+        "+'time.sleep(60)',sys.argv[1]]); "
+        "release=pathlib.Path(sys.argv[2]); deadline=time.monotonic()+5; "
+        "exec('while not release.exists() and time.monotonic() < deadline:\\n time.sleep(0.01)')"
+    )
+
+    process, owner = _install_process._start_owned_supervised_process(
+        [str(helper_python), "-c", script, str(ready), str(release)],
+        env=os.environ.copy(),
+        cwd=tmp_path,
+        root=supervisor_root,
+    )
+    replacement = None
+    try:
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and not ready.is_file():
+            time.sleep(0.02)
+        assert ready.is_file()
+        replacement = json.loads(ready.read_text(encoding="utf-8"))
+        root_identity = _install_process.observe_process_identity(process.pid)
+        replacement_identity = _install_process.observe_process_identity(replacement["pid"])
+        assert root_identity is not None
+        assert replacement_identity is not None
+        assert root_identity["pid"] == process.pid
+        assert root_identity["parent_pid"] == process.supervisor_pid
+        assert replacement_identity["parent_pid"] == process.pid
+        root_executable = Path(root_identity["executable"]).resolve()
+        replacement_executable = Path(replacement_identity["executable"]).resolve()
+        assert root_executable.is_file()
+        assert replacement_executable == root_executable
+        assert root_identity["start_identity"]
+        assert replacement_identity["start_identity"]
+        assert (
+            root_identity["pid"],
+            root_executable,
+            root_identity["start_identity"],
+        ) != (
+            replacement_identity["pid"],
+            replacement_executable,
+            replacement_identity["start_identity"],
+        )
+        observed = _install_process.observe_listener_identity(f"http://127.0.0.1:{replacement['port']}/mcp")
+        assert observed == {**replacement_identity, "listener_port": replacement["port"]}
+        release.write_text("exit", encoding="utf-8")
+        assert process.wait(timeout=3.0) == 0
+        assert _pid_alive(replacement["pid"])
+    finally:
+        assert _install_process._cleanup_owned_process(process, owner)
+
+    assert replacement is not None
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline and _pid_alive(replacement["pid"]):
+        time.sleep(0.02)
+    assert not _pid_alive(replacement["pid"])
+    assert _install_process.observe_listener_identity(f"http://127.0.0.1:{replacement['port']}/mcp") is None
+
+
 def test_probe_temp_cleanup_retries_a_transient_file_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     probe_root = tmp_path / "probe"
     probe_root.mkdir()

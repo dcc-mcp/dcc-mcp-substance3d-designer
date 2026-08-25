@@ -38,6 +38,13 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
         if self._process.poll() is None:
             os.killpg(self._process.pid, 9)
 
+    def wait_empty(self, timeout: float) -> bool:
+        try:
+            self._process.wait(timeout=max(0.0, timeout))
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return True
+
 
 class _WindowsProcessTreeOwner(_ProcessTreeOwner):
     _JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
@@ -261,7 +268,106 @@ def _start_owned_process(command: Sequence[str], *, env: Optional[Dict[str, str]
     return process, _ProcessTreeOwner()
 
 
-def _cleanup_owned_process(process: subprocess.Popen, owner: _ProcessTreeOwner) -> bool:
+def _read_supervisor_status(path: Path) -> Optional[Dict[str, Any]]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, ValueError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+class _SupervisedProcess:
+    """Popen-compatible child view whose durable supervisor remains the tree leader."""
+
+    def __init__(self, supervisor: subprocess.Popen, status_path: Path, pid: int, supervisor_pid: int) -> None:
+        self._supervisor = supervisor
+        self._status_path = status_path
+        self.pid = pid
+        self.supervisor_pid = supervisor_pid
+
+    def poll(self) -> Optional[int]:
+        status = _read_supervisor_status(self._status_path)
+        if status is not None and status.get("state") == "completed":
+            return int(status.get("returncode", -1))
+        if status is not None and status.get("state") == "launch_failed":
+            return 127
+        supervisor_result = self._supervisor.poll()
+        return None if supervisor_result is None else int(supervisor_result)
+
+    def wait(self, timeout: Optional[float] = None) -> int:
+        deadline = None if timeout is None else time.monotonic() + max(0.0, timeout)
+        while True:
+            result = self.poll()
+            if result is not None:
+                return result
+            if deadline is not None and time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired("owned supervised process", timeout)
+            time.sleep(0.01)
+
+    def kill(self) -> None:
+        if self._supervisor.poll() is None:
+            self._supervisor.kill()
+
+
+def _start_owned_supervised_process(
+    command: Sequence[str],
+    *,
+    env: Optional[Dict[str, str]],
+    cwd: Optional[Path],
+    root: Path,
+):
+    """Start a command below a durable Job/session leader and return its child identity."""
+    root.mkdir(parents=True, exist_ok=False)
+    status_path = root / "status.json"
+    ready_path = root / "ready.json"
+    stdout_path = root / "stdout.bin"
+    stderr_path = root / "stderr.bin"
+    supervisor_script = Path(__file__).with_name("_probe_supervisor.py").resolve(strict=True)
+    supervisor_command = [
+        sys.executable,
+        str(supervisor_script),
+        str(status_path),
+        str(stdout_path),
+        str(stderr_path),
+        str(ready_path),
+        "--",
+        *list(command),
+    ]
+    supervisor = None
+    owner = None
+    try:
+        supervisor, owner = _start_owned_process(supervisor_command, env=env, cwd=cwd)
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            ready = _read_supervisor_status(ready_path)
+            status = _read_supervisor_status(status_path)
+            for record in (ready, status):
+                if record is None:
+                    continue
+                state = record.get("state")
+                child_pid = record.get("pid")
+                supervisor_pid = record.get("supervisor_pid")
+                if (
+                    state in {"running", "completed"}
+                    and isinstance(child_pid, int)
+                    and child_pid > 0
+                    and isinstance(supervisor_pid, int)
+                    and supervisor_pid > 0
+                ):
+                    return _SupervisedProcess(supervisor, status_path, child_pid, supervisor_pid), owner
+                if state == "launch_failed":
+                    raise OSError("owned command launch failed")
+            if supervisor.poll() is not None:
+                raise OSError("owned supervisor exited before readiness")
+            time.sleep(0.01)
+        raise OSError("owned command readiness timed out")
+    except BaseException:
+        if supervisor is not None and owner is not None:
+            _cleanup_owned_process(supervisor, owner)
+        raise
+
+
+def _cleanup_owned_process(process: Any, owner: _ProcessTreeOwner) -> bool:
     clean = True
     try:
         owner.terminate()

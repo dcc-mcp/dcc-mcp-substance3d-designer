@@ -22,6 +22,9 @@ _MAX_PROBE_OUTPUT_BYTES = 256 * 1024
 _MIN_PROBE_TIMEOUT_SECONDS = 0.1
 _MAX_PROBE_TIMEOUT_SECONDS = 30.0
 _MAX_POSIX_PROCESS_ID_DIGITS = 20
+_MAX_PROCESS_CLEANUP_RESERVE_SECONDS = 2.0
+_MIN_PROCESS_CLEANUP_RESERVE_SECONDS = 0.05
+_POSIX_SIGKILL = getattr(signal, "SIGKILL", 9)
 _PROC_PIDTBSDINFO = 3
 
 
@@ -87,16 +90,21 @@ def _read_darwin_bsd_identity(pid: int, proc_pidinfo) -> Optional[Dict[str, Any]
     }
 
 
-def _list_posix_process_group_members(pgid: int, *, deadline: float) -> Optional[set[int]]:
-    """Return an exact read-only process-group snapshot or fail closed."""
-    if pgid <= 0 or _deadline_expired(deadline):
+def _list_posix_process_group_members(
+    pgid: int,
+    *,
+    sid: Optional[int] = None,
+    deadline: float,
+) -> Optional[set[int]]:
+    """Return the owned process-group/session snapshot or fail closed."""
+    if pgid <= 0 or (sid is not None and sid <= 0) or _deadline_expired(deadline):
         return None
     remaining = _deadline_remaining(deadline)
     if remaining <= 0.0:
         return None
     try:
         completed = subprocess.run(
-            ["/bin/ps", "-ax", "-o", "pid=", "-o", "pgid="],
+            ["/bin/ps", "-ax", "-o", "pid=", "-o", "pgid=", "-o", "sess="],
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
@@ -116,24 +124,28 @@ def _list_posix_process_group_members(pgid: int, *, deadline: float) -> Optional
         return None
     members = set()
     for line in completed.stdout.splitlines():
+        if _deadline_expired(deadline):
+            return None
         fields = line.split()
         if not fields:
             continue
-        if len(fields) != 2 or not all(
+        if len(fields) != 3 or not all(
             len(field) <= _MAX_POSIX_PROCESS_ID_DIGITS and field.isascii() and field.isdecimal() for field in fields
         ):
             return None
         try:
-            process_pid, process_group = (int(field) for field in fields)
+            process_pid, process_group, process_session = (int(field) for field in fields)
         except (ValueError, OverflowError):
             return None
-        if process_group == pgid:
+        if _deadline_expired(deadline):
+            return None
+        if process_group == pgid or (sid is not None and process_session == sid):
             members.add(process_pid)
     return members if not _deadline_expired(deadline) else None
 
 
 class _ProcessTreeOwner:
-    def terminate(self) -> None:
+    def terminate(self, *, deadline: Optional[float] = None) -> None:
         raise NotImplementedError
 
     def close(self) -> None:
@@ -149,10 +161,11 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
         self._leader_pid = int(process.pid)
         try:
             self._pgid = int(os.getpgid(self._leader_pid))
+            self._sid = int(os.getsid(self._leader_pid))
         except OSError as exc:
             raise OSError("owned session leader identity is unavailable") from exc
         self._leader_identity = observe_process_identity(self._leader_pid)
-        if self._pgid != self._leader_pid or self._leader_identity is None:
+        if self._pgid != self._leader_pid or self._sid != self._leader_pid or self._leader_identity is None:
             raise OSError("owned process is not an identity-bound session leader")
 
     def _leader_matches(self) -> bool:
@@ -160,21 +173,67 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
             return False
         try:
             current_pgid = int(os.getpgid(self._leader_pid))
+            current_sid = int(os.getsid(self._leader_pid))
         except OSError:
             return False
         current_identity = observe_process_identity(self._leader_pid)
         if current_identity is None:
             return False
-        return current_pgid == self._pgid and all(
-            current_identity.get(field) == self._leader_identity.get(field) for field in ("pid", "start_identity")
+        return (
+            current_pgid == self._pgid
+            and current_sid == self._sid
+            and all(
+                current_identity.get(field) == self._leader_identity.get(field) for field in ("pid", "start_identity")
+            )
         )
 
-    def terminate(self) -> None:
+    @staticmethod
+    def _same_process_identity(expected: Dict[str, Any], current: Optional[Dict[str, Any]]) -> bool:
+        return current is not None and all(
+            current.get(field) == expected.get(field) for field in ("pid", "start_identity")
+        )
+
+    def terminate(self, *, deadline: Optional[float] = None) -> None:
+        if deadline is None:
+            deadline = time.monotonic() + 3.0
+        if _deadline_expired(deadline):
+            raise OSError("owned session cleanup deadline expired")
         if self._process.poll() is not None:
             return
-        if not self._leader_matches():
-            raise OSError("owned session leader identity changed before cleanup")
-        os.killpg(self._pgid, signal.SIGKILL)
+        while True:
+            if _deadline_expired(deadline) or not self._leader_matches():
+                raise OSError("owned session leader identity changed before cleanup")
+            members = _list_posix_process_group_members(self._pgid, sid=self._sid, deadline=deadline)
+            if members is None or self._leader_pid not in members or _deadline_expired(deadline):
+                raise OSError("owned session membership is unavailable")
+            descendants = sorted(members - {self._leader_pid})
+            if not descendants:
+                if not self._leader_matches() or _deadline_expired(deadline):
+                    raise OSError("owned session leader identity changed before cleanup")
+                os.kill(self._leader_pid, _POSIX_SIGKILL)
+                return
+            for pid in descendants:
+                if _deadline_expired(deadline) or not self._leader_matches():
+                    raise OSError("owned session leader identity changed before cleanup")
+                expected = observe_process_identity(pid)
+                if expected is None or _deadline_expired(deadline):
+                    raise OSError("owned session member identity is unavailable")
+                try:
+                    current_sid = int(os.getsid(pid))
+                except OSError:
+                    continue
+                current = observe_process_identity(pid)
+                if (
+                    current_sid != self._sid
+                    or not self._same_process_identity(expected, current)
+                    or _deadline_expired(deadline)
+                ):
+                    raise OSError("owned session member identity changed before cleanup")
+                try:
+                    os.kill(pid, _POSIX_SIGKILL)
+                except ProcessLookupError:
+                    pass
+            time.sleep(min(0.01, _deadline_remaining(deadline)))
 
     def wait_empty(self, deadline: float) -> bool:
         if _deadline_expired(deadline):
@@ -188,7 +247,7 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
         while True:
             if _deadline_expired(deadline):
                 return False
-            members = _list_posix_process_group_members(self._pgid, deadline=deadline)
+            members = _list_posix_process_group_members(self._pgid, sid=self._sid, deadline=deadline)
             if _deadline_expired(deadline):
                 return False
             if members is None:
@@ -301,7 +360,9 @@ class _WindowsProcessTreeOwner(_ProcessTreeOwner):
         if not self._kernel32.AssignProcessToJobObject(self._handle, int(process._handle)):
             raise OSError(self._ctypes.get_last_error(), "AssignProcessToJobObject failed")
 
-    def terminate(self) -> None:
+    def terminate(self, *, deadline: Optional[float] = None) -> None:
+        if deadline is not None and _deadline_expired(deadline):
+            raise OSError("owned Job cleanup deadline expired")
         if self._handle and not self._kernel32.TerminateJobObject(self._handle, 1):
             raise OSError(self._ctypes.get_last_error(), "TerminateJobObject failed")
 
@@ -450,7 +511,7 @@ def _start_owned_process(
             return process, owner
         except BaseException:
             try:
-                owner.terminate()
+                owner.terminate(deadline=deadline)
             except OSError:
                 pass
             if process is not None:
@@ -590,7 +651,7 @@ def _cleanup_owned_process(
     clean = True
     expired = _deadline_expired(deadline)
     try:
-        owner.terminate()
+        owner.terminate(deadline=deadline)
     except (NotImplementedError, OSError):
         clean = False
         if process.poll() is None:
@@ -651,6 +712,14 @@ def _run_bounded_command_in_root(
     timeout_result = {"success": False, "reason": "probe timed out", "truncated": False}
     if _deadline_expired(deadline):
         return timeout_result
+    initial_remaining = _deadline_remaining(deadline)
+    cleanup_reserve = min(
+        _MAX_PROCESS_CLEANUP_RESERVE_SECONDS,
+        max(_MIN_PROCESS_CLEANUP_RESERVE_SECONDS, initial_remaining * 0.25),
+    )
+    operation_cutoff = deadline - cleanup_reserve
+    if time.monotonic() >= operation_cutoff:
+        return timeout_result
     status_path = root / "status.json"
     stdout_path = root / "stdout.bin"
     stderr_path = root / "stderr.bin"
@@ -668,6 +737,8 @@ def _run_bounded_command_in_root(
         "--",
         *list(command),
     ]
+    if _deadline_expired(deadline) or time.monotonic() >= operation_cutoff:
+        return timeout_result
     try:
         process, owner = _start_owned_process(supervisor, env=env, cwd=cwd, deadline=deadline)
     except TimeoutError:
@@ -681,7 +752,7 @@ def _run_bounded_command_in_root(
     cleanup_ok = True
     timed_out = False
     try:
-        while not _deadline_expired(deadline):
+        while not _deadline_expired(deadline) and time.monotonic() < operation_cutoff:
             oversized = False
             for path in (stdout_path, stderr_path):
                 if _deadline_expired(deadline):

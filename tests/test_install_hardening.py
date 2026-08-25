@@ -322,7 +322,7 @@ def test_receipt_temporary_cleanup_failure_is_operator_visible(tmp_path: Path, m
 def test_process_cleanup_fails_closed_when_tree_does_not_become_empty() -> None:
     process = SimpleNamespace(poll=lambda: None, kill=lambda: None, wait=lambda timeout: 0)
     owner = SimpleNamespace(
-        terminate=lambda: None,
+        terminate=lambda **_kwargs: None,
         wait_empty=lambda timeout: False,
         close=lambda: None,
     )
@@ -415,7 +415,8 @@ def test_completed_probe_receipt_read_after_deadline_is_still_a_timeout(
             return None
 
     class FakeOwner:
-        def terminate(self):
+        def terminate(self, *, deadline=None):
+            assert deadline == 200.5
             return None
 
         def wait_empty(self, deadline):
@@ -465,7 +466,8 @@ def test_completed_probe_receipt_cannot_win_when_launch_returns_after_deadline(
             return None
 
     class FakeOwner:
-        def terminate(self):
+        def terminate(self, *, deadline=None):
+            assert deadline == 250.5
             return None
 
         def wait_empty(self, deadline):
@@ -511,7 +513,8 @@ def test_completed_probe_output_read_after_deadline_is_still_a_timeout(
             return None
 
     class FakeOwner:
-        def terminate(self):
+        def terminate(self, *, deadline=None):
+            assert deadline == 275.5
             return None
 
         def wait_empty(self, _deadline):
@@ -558,7 +561,8 @@ def test_probe_cleanup_reap_and_remove_share_the_expired_absolute_deadline(
             return 0
 
     class FakeOwner:
-        def terminate(self):
+        def terminate(self, *, deadline=None):
+            assert deadline == 300.5
             clock[0] = 301.0
 
         def wait_empty(self, deadline):
@@ -694,10 +698,11 @@ def test_posix_owner_wait_empty_rejects_a_surviving_group_member(monkeypatch: py
     owner = object.__new__(_install_process._PosixProcessTreeOwner)
     owner._process = SimpleNamespace(wait=lambda timeout: 0)
     owner._pgid = 9123
+    owner._sid = 9123
     monkeypatch.setattr(
         _install_process,
         "_list_posix_process_group_members",
-        lambda _pgid, *, deadline: {9912},
+        lambda _pgid, *, sid, deadline: {9912},
     )
 
     assert owner.wait_empty(0.0) is False
@@ -710,9 +715,10 @@ def test_posix_owner_threads_the_same_deadline_into_group_snapshot(monkeypatch: 
     owner = object.__new__(_install_process._PosixProcessTreeOwner)
     owner._process = SimpleNamespace(wait=lambda timeout: wait_timeouts.append(timeout))
     owner._pgid = 9123
+    owner._sid = 9123
 
-    def empty_snapshot(_pgid: int, *, deadline: float):
-        snapshot_deadlines.append(deadline)
+    def empty_snapshot(_pgid: int, *, sid: int, deadline: float):
+        snapshot_deadlines.append((sid, deadline))
         return set()
 
     monkeypatch.setattr(_install_process.time, "monotonic", lambda: clock[0])
@@ -720,7 +726,7 @@ def test_posix_owner_threads_the_same_deadline_into_group_snapshot(monkeypatch: 
 
     assert owner.wait_empty(150.001) is True
     assert wait_timeouts == [pytest.approx(0.001)]
-    assert snapshot_deadlines == [150.001]
+    assert snapshot_deadlines == [(9123, 150.001)]
 
 
 def test_posix_owner_live_match_survives_exec_and_parent_reobservation(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -728,6 +734,7 @@ def test_posix_owner_live_match_survives_exec_and_parent_reobservation(monkeypat
     owner._process = SimpleNamespace(poll=lambda: None)
     owner._leader_pid = 9123
     owner._pgid = 9123
+    owner._sid = 9123
     owner._leader_identity = {
         "pid": 9123,
         "parent_pid": 42,
@@ -735,6 +742,7 @@ def test_posix_owner_live_match_survives_exec_and_parent_reobservation(monkeypat
         "start_identity": "darwin-proc-bsdinfo:1777000000:123456",
     }
     monkeypatch.setattr(_install_process.os, "getpgid", lambda _pid: 9123, raising=False)
+    monkeypatch.setattr(_install_process.os, "getsid", lambda _pid: 9123, raising=False)
     current_identity = {
         "pid": 9123,
         "parent_pid": 1,
@@ -752,18 +760,108 @@ def test_posix_owner_live_match_survives_exec_and_parent_reobservation(monkeypat
     assert owner._leader_matches() is False
 
 
+def test_posix_owner_terminates_identity_matched_members_before_session_leader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = object.__new__(_install_process._PosixProcessTreeOwner)
+    owner._process = SimpleNamespace(poll=lambda: None)
+    owner._leader_pid = 9123
+    owner._pgid = 9123
+    owner._sid = 9123
+    owner._leader_identity = {"pid": 9123, "start_identity": "leader:1"}
+    snapshots = iter(({9123, 9912}, {9123}))
+    descendant_observations = iter(
+        (
+            {"pid": 9912, "start_identity": "descendant:1"},
+            {"pid": 9912, "start_identity": "descendant:1"},
+        )
+    )
+    signals = []
+    monkeypatch.setattr(owner, "_leader_matches", lambda: True)
+    monkeypatch.setattr(
+        _install_process,
+        "_list_posix_process_group_members",
+        lambda _pgid, *, sid, deadline: next(snapshots),
+    )
+    monkeypatch.setattr(
+        _install_process,
+        "observe_process_identity",
+        lambda pid: next(descendant_observations) if pid == 9912 else owner._leader_identity.copy(),
+    )
+    monkeypatch.setattr(_install_process.os, "getsid", lambda pid: 9123, raising=False)
+    monkeypatch.setattr(_install_process.os, "kill", lambda pid, sig: signals.append((pid, sig)))
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_install_process.time, "sleep", lambda _delay: None)
+
+    owner.terminate(deadline=101.0)
+
+    assert signals == [(9912, _install_process._POSIX_SIGKILL), (9123, _install_process._POSIX_SIGKILL)]
+
+
+def test_posix_owner_never_signals_a_member_whose_identity_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    owner = object.__new__(_install_process._PosixProcessTreeOwner)
+    owner._process = SimpleNamespace(poll=lambda: None)
+    owner._leader_pid = 9123
+    owner._pgid = 9123
+    owner._sid = 9123
+    owner._leader_identity = {"pid": 9123, "start_identity": "leader:1"}
+    observations = iter(
+        (
+            {"pid": 9912, "start_identity": "descendant:1"},
+            {"pid": 9912, "start_identity": "reused:2"},
+        )
+    )
+    signals = []
+    monkeypatch.setattr(owner, "_leader_matches", lambda: True)
+    monkeypatch.setattr(
+        _install_process,
+        "_list_posix_process_group_members",
+        lambda _pgid, *, sid, deadline: {9123, 9912},
+    )
+    monkeypatch.setattr(
+        _install_process,
+        "observe_process_identity",
+        lambda pid: next(observations) if pid == 9912 else owner._leader_identity.copy(),
+    )
+    monkeypatch.setattr(_install_process.os, "getsid", lambda pid: 9123, raising=False)
+    monkeypatch.setattr(_install_process.os, "kill", lambda pid, sig: signals.append((pid, sig)))
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
+
+    with pytest.raises(OSError, match="identity changed"):
+        owner.terminate(deadline=101.0)
+
+    assert signals == []
+
+
 def test_posix_group_snapshot_accepts_bsd_ps_empty_heading(monkeypatch: pytest.MonkeyPatch) -> None:
-    completed = SimpleNamespace(returncode=0, stdout="\n  9912  9123\n  9913  9913\n")
+    completed = SimpleNamespace(returncode=0, stdout="\n  9912  9123  9123\n  9913  9913  9913\n")
     monkeypatch.setattr(_install_process.subprocess, "run", lambda *_args, **_kwargs: completed)
     monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
 
-    assert _install_process._list_posix_process_group_members(9123, deadline=101.0) == {9912}
+    assert _install_process._list_posix_process_group_members(9123, sid=9123, deadline=101.0) == {9912}
+
+
+def test_posix_group_snapshot_includes_owned_session_members_that_change_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed_commands = []
+    completed = SimpleNamespace(returncode=0, stdout="  9912  9912  9123\n  9913  9913  9913\n")
+
+    def bounded_run(command, **_kwargs):
+        observed_commands.append(command)
+        return completed
+
+    monkeypatch.setattr(_install_process.subprocess, "run", bounded_run)
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
+
+    assert _install_process._list_posix_process_group_members(9123, sid=9123, deadline=101.0) == {9912}
+    assert observed_commands == [["/bin/ps", "-ax", "-o", "pid=", "-o", "pgid=", "-o", "sess="]]
 
 
 def test_posix_group_snapshot_uses_only_the_exact_remaining_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
     clock = [200.0]
     observed_timeouts = []
-    completed = SimpleNamespace(returncode=0, stdout="  9912  9123\n")
+    completed = SimpleNamespace(returncode=0, stdout="  9912  9123  9123\n")
 
     def bounded_run(*_args, **kwargs):
         observed_timeouts.append(kwargs["timeout"])
@@ -772,7 +870,7 @@ def test_posix_group_snapshot_uses_only_the_exact_remaining_deadline(monkeypatch
     monkeypatch.setattr(_install_process.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(_install_process.subprocess, "run", bounded_run)
 
-    assert _install_process._list_posix_process_group_members(9123, deadline=200.001) == {9912}
+    assert _install_process._list_posix_process_group_members(9123, sid=9123, deadline=200.001) == {9912}
     assert observed_timeouts == [pytest.approx(0.001)]
 
 
@@ -789,12 +887,50 @@ def test_posix_group_snapshot_fails_closed_before_or_after_deadline(monkeypatch:
     monkeypatch.setattr(_install_process.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(_install_process.subprocess, "run", delayed_run)
 
-    assert _install_process._list_posix_process_group_members(9123, deadline=300.0) is None
+    assert _install_process._list_posix_process_group_members(9123, sid=9123, deadline=300.0) is None
     assert calls == 0
 
     clock[0] = 300.0
-    assert _install_process._list_posix_process_group_members(9123, deadline=300.001) is None
+    assert _install_process._list_posix_process_group_members(9123, sid=9123, deadline=300.001) is None
     assert calls == 1
+
+
+def test_posix_group_snapshot_fails_closed_when_deadline_expires_during_parse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checks = 0
+
+    def expires_during_parse(_deadline: float) -> bool:
+        nonlocal checks
+        checks += 1
+        return checks >= 4
+
+    completed = SimpleNamespace(returncode=0, stdout="9912 9912 9123\n")
+    monkeypatch.setattr(_install_process, "_deadline_expired", expires_during_parse)
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_install_process.subprocess, "run", lambda *_args, **_kwargs: completed)
+
+    assert _install_process._list_posix_process_group_members(9123, sid=9123, deadline=101.0) is None
+    assert checks == 4
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        subprocess.TimeoutExpired(["/bin/ps"], 0.001),
+        UnicodeDecodeError("ascii", b"\xff", 0, 1, "synthetic non-ASCII output"),
+    ],
+)
+def test_posix_group_snapshot_fails_closed_on_bounded_io_errors(
+    monkeypatch: pytest.MonkeyPatch, failure: Exception
+) -> None:
+    def failed_run(*_args, **_kwargs):
+        raise failure
+
+    monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(_install_process.subprocess, "run", failed_run)
+
+    assert _install_process._list_posix_process_group_members(9123, sid=9123, deadline=101.0) is None
 
 
 @pytest.mark.parametrize("deadline", [float("nan"), float("inf"), float("-inf")])
@@ -810,17 +946,21 @@ def test_posix_group_snapshot_rejects_nonfinite_deadline_before_io(
 
     monkeypatch.setattr(_install_process.subprocess, "run", forbidden_run)
 
-    assert _install_process._list_posix_process_group_members(9123, deadline=deadline) is None
+    assert _install_process._list_posix_process_group_members(9123, sid=9123, deadline=deadline) is None
     assert calls == 0
 
 
-def test_posix_group_snapshot_rejects_oversized_decimal_pid(monkeypatch: pytest.MonkeyPatch) -> None:
-    oversized_pid = "9" * 5000
-    completed = SimpleNamespace(returncode=0, stdout=f"{oversized_pid} 9123\n")
+@pytest.mark.parametrize("field_index", range(3))
+def test_posix_group_snapshot_rejects_oversized_decimal_field(
+    monkeypatch: pytest.MonkeyPatch, field_index: int
+) -> None:
+    fields = ["9912", "9123", "9123"]
+    fields[field_index] = "9" * 5000
+    completed = SimpleNamespace(returncode=0, stdout=" ".join(fields) + "\n")
     monkeypatch.setattr(_install_process.subprocess, "run", lambda *_args, **_kwargs: completed)
     monkeypatch.setattr(_install_process.time, "monotonic", lambda: 100.0)
 
-    assert _install_process._list_posix_process_group_members(9123, deadline=101.0) is None
+    assert _install_process._list_posix_process_group_members(9123, sid=9123, deadline=101.0) is None
 
 
 def test_listener_observation_binds_an_exact_direct_child_process() -> None:
@@ -969,6 +1109,53 @@ def test_owned_supervisor_cleans_replacement_after_command_root_exits(tmp_path: 
     assert _install_process.observe_listener_identity(f"http://127.0.0.1:{replacement['port']}/mcp") is None
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux session/process-group contract")
+def test_bounded_probe_cleans_descendant_that_changes_process_group(tmp_path: Path) -> None:
+    ready = tmp_path / "changed-group.json"
+    helper_python = Path(sys.executable).absolute()
+    child_code = (
+        "import json,os,pathlib,sys,time; "
+        "os.setpgid(0,0); "
+        "stat=pathlib.Path('/proc/self/stat').read_text(encoding='utf-8'); "
+        "closing=stat.rfind(') '); start_ticks=stat[closing+2:].split()[19]; "
+        "pathlib.Path(sys.argv[1]).write_text(json.dumps({"
+        "'pid':os.getpid(),'parent_pid':os.getppid(),'pgid':os.getpgrp(),'sid':os.getsid(0),"
+        "'expected_sid':int(sys.argv[2]),'start_ticks':start_ticks}),encoding='utf-8'); "
+        "time.sleep(60)"
+    )
+    root_code = (
+        "import os,pathlib,subprocess,sys,time; "
+        "sid=os.getsid(0); "
+        "subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2],str(sid)]); "
+        "ready=pathlib.Path(sys.argv[2]); deadline=time.monotonic()+5; "
+        "exec('while not ready.is_file() and time.monotonic() < deadline:\\n time.sleep(0.01)')"
+    )
+    child = None
+    try:
+        result = _install_process.run_bounded_command(
+            [str(helper_python), "-c", root_code, child_code, str(ready)],
+            timeout=10.0,
+            env=os.environ.copy(),
+            cwd=tmp_path,
+        )
+
+        assert ready.is_file(), result
+        child = json.loads(ready.read_text(encoding="utf-8"))
+        assert child["pgid"] == child["pid"]
+        assert child["sid"] == child["expected_sid"]
+        assert child["pgid"] != child["sid"]
+        assert result["success"] is True, result
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline and _pid_alive(child["pid"]):
+            time.sleep(0.02)
+        assert not _pid_alive(child["pid"])
+    finally:
+        if child is not None:
+            identity = _install_process.observe_process_identity(int(child["pid"]))
+            if identity is not None and identity["start_identity"].endswith(":" + str(child["start_ticks"])):
+                os.kill(int(child["pid"]), signal.SIGKILL)
+
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX session/process-group contract")
 def test_owned_supervisor_cleans_live_tree_when_controller_is_sigkilled(tmp_path: Path) -> None:
     """A killed caller must not strand a still-running supervised process tree."""
@@ -979,7 +1166,9 @@ def test_owned_supervisor_cleans_live_tree_when_controller_is_sigkilled(tmp_path
     helper_python = Path(sys.executable).absolute()
     descendant_code = (
         "import json,os,pathlib,sys,time; "
-        "pathlib.Path(sys.argv[1]).write_text(json.dumps({'pid':os.getpid()}),encoding='utf-8'); "
+        "os.setpgid(0,0); "
+        "pathlib.Path(sys.argv[1]).write_text(json.dumps({"
+        "'pid':os.getpid(),'pgid':os.getpgrp(),'sid':os.getsid(0)}),encoding='utf-8'); "
         "time.sleep(60)"
     )
     root_code = (
@@ -1039,6 +1228,9 @@ def test_owned_supervisor_cleans_live_tree_when_controller_is_sigkilled(tmp_path
         assert expected["supervisor"]["parent_pid"] == pids["controller"]
         assert expected["root"]["parent_pid"] == pids["supervisor"]
         assert expected["descendant"]["parent_pid"] == pids["root"]
+        assert descendant["pgid"] == pids["descendant"]
+        assert descendant["sid"] == pids["supervisor"]
+        assert descendant["pgid"] != descendant["sid"]
 
         os.kill(controller.pid, signal.SIGKILL)
         controller.wait(timeout=3.0)

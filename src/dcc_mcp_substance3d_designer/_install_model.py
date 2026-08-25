@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
-from dcc_mcp_substance3d_designer._install_contract import INSTALL_EXIT_PREFLIGHT
+from dcc_mcp_core.deployment import INSTALL_EXIT_PREFLIGHT
 
 DCC_TYPE = "substance3d_designer"
 COMMAND = "dcc-mcp-substance3d-designer"
-MIN_CORE_VERSION = "0.20.8"
+MIN_CORE_VERSION = "0.20.15"
 MIN_DESIGNER_VERSION = (12, 1)
 INSTALL_ROOT_ENV = "DCC_MCP_SUBSTANCE3D_DESIGNER_INSTALL_ROOT"
 VERSION_ENV = "DCC_MCP_SUBSTANCE3D_DESIGNER_VERSION"
@@ -37,6 +37,14 @@ class InstallContext:
     plugin_path: Path
     bootstrap_log_dir: Path
     state: str
+    adapter_module_path: Optional[Path] = None
+    core_module_path: Optional[Path] = None
+    adapter_distribution_root: Optional[Path] = None
+    core_distribution_root: Optional[Path] = None
+    python_prefix: Optional[Path] = None
+    server_module_path: Optional[Path] = None
+    server_distribution_root: Optional[Path] = None
+    server_binary_path: Optional[Path] = None
 
 
 @dataclass(frozen=True)

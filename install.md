@@ -8,7 +8,7 @@ modify a global shell profile, system registry, or the Designer application dire
 
 - Adobe Substance 3D Designer 12.1 or newer.
 - A Python interpreter matching Designer's embedded Python ABI.
-- `dcc-mcp-core>=0.20.8` and this adapter installed in that interpreter.
+- `dcc-mcp-core>=0.20.15` and this adapter installed in that interpreter.
 - Permission to write the current user's `~/.dcc-mcp` directory.
 
 Designer 14 and newer embed Python 3.11; Designer 12.1 through 13.x embed Python 3.9. The
@@ -46,9 +46,8 @@ The JSON contract uses exit codes `0` (ok), `10` (preflight), `20` (acquire), `3
 (verify), and `50` (host restart required). `next_steps[]` entries contain one executable `command`
 or `file_edit`; a copied file alone is never reported as a usable installation.
 
-Dependency note: Core PR #2320 owns the future shared schema and exit-code symbols. Until its
-released Core version is available, this adapter uses an exact, thin compatibility import while
-keeping the adapter-owned host discovery, launcher, receipt, and readiness behavior here.
+The lifecycle uses the official schema, exit codes, and managed-file primitives released in
+`dcc-mcp-core 0.20.15`; it fails closed when that public contract is unavailable.
 
 ## Manual path
 

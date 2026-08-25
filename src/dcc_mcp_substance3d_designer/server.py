@@ -20,12 +20,20 @@ class SubstanceDesignerMcpServer(DccServerBase):
     """DCC-MCP server hosted by a running Substance 3D Designer process."""
 
     def __init__(self, host_dispatcher: object, port: Optional[int] = None) -> None:
+        try:
+            import sd  # Lazy import: provided by Designer.
+
+            dcc_version = str(sd.getContext().getSDApplication().getVersion())
+        except Exception:
+            dcc_version = None
         options = DccServerOptions.from_env(
             "substance3d_designer",
             _SKILLS_DIR,
             port=port,
             server_name=SERVER_NAME,
             server_version=__version__,
+            adapter_version=__version__,
+            dcc_version=dcc_version,
             execution_bridge=HostExecutionBridge(dispatcher=host_dispatcher),
             enable_file_logging=True,
             enable_telemetry=True,

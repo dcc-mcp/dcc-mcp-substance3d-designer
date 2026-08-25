@@ -4,7 +4,7 @@ description: >-
   Host diagnostics skill - prove that the active Substance 3D Designer
   application can answer a typed, main-thread readiness probe.
 license: MIT
-compatibility: "Substance 3D Designer 12.1+; dcc-mcp-core 0.20.8+"
+compatibility: "Substance 3D Designer 12.1+; dcc-mcp-core 0.20.15+"
 allowed-tools: Python
 metadata:
   dcc-mcp:

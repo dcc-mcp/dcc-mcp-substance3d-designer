@@ -134,6 +134,15 @@ def _copy_release_metadata_tree(tmp_path: Path) -> Path:
     return tmp_path
 
 
+def _move_release_marker_to_the_wrong_yaml_node(_name: str, text: str) -> str:
+    return re.sub(
+        r'(?m)^    version: "([^"]+)" # x-release-please-version$',
+        '    version: "\\1"\n    other:\n      version: "\\1" # x-release-please-version',
+        text,
+        count=1,
+    )
+
+
 def test_release_metadata_checker_rejects_a_stale_wheel_skill(tmp_path: Path):
     checker = _checker()
 
@@ -182,6 +191,15 @@ def test_release_metadata_checker_binds_the_real_skill_yaml_path(tmp_path: Path,
         checker.validate_wheel(ROOT, wheel, adapter.__version__)
 
 
+def test_release_metadata_checker_binds_the_marker_to_the_real_wheel_yaml_node(tmp_path: Path):
+    checker = _checker()
+    wheel = tmp_path / f"{PACKAGE}-0.6.0-py3-none-any.whl"
+    _write_wheel(wheel, mutate_skill=_move_release_marker_to_the_wrong_yaml_node)
+
+    with pytest.raises(checker.MetadataError, match="release-please marker"):
+        checker.validate_wheel(ROOT, wheel, adapter.__version__)
+
+
 def test_release_metadata_checker_rejects_malformed_source_yaml(tmp_path: Path):
     checker = _checker()
     root = _copy_release_metadata_tree(tmp_path)
@@ -189,6 +207,19 @@ def test_release_metadata_checker_rejects_malformed_source_yaml(tmp_path: Path):
     skill.write_text(skill.read_text(encoding="utf-8").replace("\n---\n", "\nbroken: [\n---\n", 1), encoding="utf-8")
 
     with pytest.raises(checker.MetadataError, match="Skill metadata"):
+        checker.validate_source(root)
+
+
+def test_release_metadata_checker_binds_the_marker_to_the_real_source_yaml_node(tmp_path: Path):
+    checker = _checker()
+    root = _copy_release_metadata_tree(tmp_path)
+    skill = root / "src" / PACKAGE / "skills" / "designer-diagnostics" / "SKILL.md"
+    skill.write_text(
+        _move_release_marker_to_the_wrong_yaml_node(skill.parent.name, skill.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(checker.MetadataError, match="release-please marker"):
         checker.validate_source(root)
 
 

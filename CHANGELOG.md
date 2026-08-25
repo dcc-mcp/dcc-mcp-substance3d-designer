@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.1](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.6.0...v0.6.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* bind Linux cleanup to stable process handles ([e685372](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/e685372d5afae2dd5169f5a3501a88d6bcbfaba5))
+* bind release marker to skill version ([7d6abf7](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/7d6abf726678b501932afcc6cac404f7592c26b6))
+* harden release metadata validation ([778371c](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/778371c5e60b54eacc65819fad71f93f5d8c7930))
+* synchronize release metadata ([e501305](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/e501305e8380ceb4df747e54e9a8185a8fdb39a8))
+
 ## [0.6.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.5.0...v0.6.0) (2026-08-25)
 
 

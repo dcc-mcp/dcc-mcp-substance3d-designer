@@ -86,9 +86,12 @@ def _read_darwin_bsd_identity(pid: int, proc_pidinfo) -> Optional[Dict[str, Any]
     }
 
 
-def _list_posix_process_group_members(pgid: int) -> Optional[set[int]]:
+def _list_posix_process_group_members(pgid: int, *, deadline: float) -> Optional[set[int]]:
     """Return an exact read-only process-group snapshot or fail closed."""
     if pgid <= 0:
+        return None
+    remaining = _deadline_remaining(deadline)
+    if remaining <= 0.0:
         return None
     try:
         completed = subprocess.run(
@@ -101,10 +104,12 @@ def _list_posix_process_group_members(pgid: int) -> Optional[set[int]]:
             text=True,
             encoding="ascii",
             errors="strict",
-            timeout=1.0,
+            timeout=remaining,
             check=False,
         )
     except (OSError, subprocess.SubprocessError, UnicodeError):
+        return None
+    if _deadline_expired(deadline):
         return None
     if completed.returncode != 0 or len(completed.stdout) > _MAX_PROBE_OUTPUT_BYTES:
         return None
@@ -118,7 +123,7 @@ def _list_posix_process_group_members(pgid: int) -> Optional[set[int]]:
         process_pid, process_group = (int(field) for field in fields)
         if process_group == pgid:
             members.add(process_pid)
-    return members
+    return members if not _deadline_expired(deadline) else None
 
 
 class _ProcessTreeOwner:
@@ -177,7 +182,7 @@ class _PosixProcessTreeOwner(_ProcessTreeOwner):
         while True:
             if _deadline_expired(deadline):
                 return False
-            members = _list_posix_process_group_members(self._pgid)
+            members = _list_posix_process_group_members(self._pgid, deadline=deadline)
             if _deadline_expired(deadline):
                 return False
             if members is None:

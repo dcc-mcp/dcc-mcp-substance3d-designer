@@ -77,7 +77,7 @@ The higher-level procedural and imported-PBR tools remain available for common
 material recipes. Use the granular tools when the graph topology or package
 lifecycle must be controlled and verified step by step.
 
-### Native graph views
+## Native graph views
 
 Use `list_graph_views` to bind an open view to its native graph UID and read selected nodes. Pass its opaque string ID and the expected graph UID to `get_graph_view_node_bounds`. A stale view or graph mismatch fails before querying node bounds. The SDK bounds are x/y/width/height in native graph-view coordinates, not desktop pixels; do not use them directly for screen clicks.
 

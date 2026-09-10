@@ -76,3 +76,9 @@ its in-memory edits. Use a new path to export SBSAR or save another package.
 The higher-level procedural and imported-PBR tools remain available for common
 material recipes. Use the granular tools when the graph topology or package
 lifecycle must be controlled and verified step by step.
+
+## Native graph views
+
+Use `list_graph_views` to bind an open view to its native graph UID and read selected nodes. Pass its opaque string ID and the expected graph UID to `get_graph_view_node_bounds`. A stale view or graph mismatch fails before querying node bounds. The SDK bounds are x/y/width/height in native graph-view coordinates, not desktop pixels; do not use them directly for screen clicks.
+
+The inventory reports whether the official view-created and explorer-selection callback APIs exist. It does not register hooks, inject code, operate the UI, fit the view, or export a screenshot. Continue using the project DCC-CUA route for UI capture until graph-widget binding and full graph coverage are verified.

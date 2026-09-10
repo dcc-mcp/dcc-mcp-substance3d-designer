@@ -38,7 +38,7 @@ explains the two layers and the existing steel UVs.
 [UV checker](docs/showcase/crate-lookdev/uv-checker.png) ·
 [Broken wood detail](docs/showcase/crate-lookdev/detail.png) ·
 [Blender showcase](https://github.com/dcc-mcp/dcc-mcp-blender/tree/main/docs/showcase/crate-lookdev) ·
-[Website gallery](https://dcc-mcp.github.io/showcase#blender-designer-crate) ·
+[Website gallery](https://dcc-mcp.github.io/showcase) ·
 [Earlier color-correction study](docs/showcase/painted-wood/README.md)
 
 The crate is a reference-guided modeling and lookdev study. Its proportions,

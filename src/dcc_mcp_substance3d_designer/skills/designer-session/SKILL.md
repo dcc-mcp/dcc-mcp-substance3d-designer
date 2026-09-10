@@ -64,7 +64,12 @@ a per-node compiler log.
 Compute remains synchronous with no hard cancellation deadline. Exported file
 headers verify dimensions and actual bit depth; hashes prove fresh bytes, not
 visual material accuracy. `export_native_maps` preserves native texture precision
-without requiring SAT. SAT export owns the renderer process tree for timeout cleanup.
+without requiring SAT. Select the named graph output node and its returned port
+when Designer releases an intermediate texture after computation. Missing texture
+errors identify the requested name, node and port. Native export checks all selected
+textures and stages verified files before publishing the destination; a failed
+export leaves that destination available for retry. Each file receipt includes its
+native pixel format and source node/port. SAT export owns the renderer process tree for timeout cleanup.
 Save before closing a modified package; opening an already-open package preserves
 its in-memory edits. Use a new path to export SBSAR or save another package.
 

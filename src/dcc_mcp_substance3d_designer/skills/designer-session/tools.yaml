@@ -1783,3 +1783,85 @@ tools:
         type: string
       context:
         type: object
+- name: list_graph_views
+  description: List native graph-view identities, selected nodes and available SDK
+    UI hooks without UI input.
+  input_schema:
+    type: object
+    additionalProperties: false
+    properties: {}
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      context:
+        type: object
+  read_only: true
+  destructive: false
+  idempotent: true
+  execution: sync
+  affinity: main
+  enforce_thread_affinity: true
+  timeout_hint_secs: 30
+  source_file: scripts/list_graph_views.py
+  annotations:
+    read_only_hint: true
+    destructive_hint: false
+    idempotent_hint: true
+- name: get_graph_view_node_bounds
+  description: Read native x/y/width/height for nodes in a verified graph view; these
+    are not desktop pixel coordinates.
+  input_schema:
+    type: object
+    additionalProperties: false
+    properties:
+      graph_view_id:
+        type: string
+        pattern: ^[0-9]{1,20}$
+        description: Opaque ID returned by list_graph_views; valid only while the
+          view is open.
+      expected_graph_uid:
+        type: string
+        pattern: ^[A-Za-z0-9_-]{1,128}$
+      node_ids:
+        type: array
+        minItems: 1
+        maxItems: 128
+        uniqueItems: true
+        items:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,128}$
+    required:
+    - graph_view_id
+    - expected_graph_uid
+    - node_ids
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      context:
+        type: object
+  read_only: true
+  destructive: false
+  idempotent: true
+  execution: sync
+  affinity: main
+  enforce_thread_affinity: true
+  timeout_hint_secs: 30
+  source_file: scripts/get_graph_view_node_bounds.py
+  annotations:
+    read_only_hint: true
+    destructive_hint: false
+    idempotent_hint: true

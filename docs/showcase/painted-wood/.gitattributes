@@ -1,0 +1,2 @@
+# Preserve the exact downloadable source bytes recorded in manifest.json.
+*.sbs -text

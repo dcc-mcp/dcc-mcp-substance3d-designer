@@ -1,0 +1,101 @@
+{
+  "reference_provenance": "Codex image generation",
+  "material_authoring": "Live Substance 3D Designer 16.0.0 via DCC-MCP",
+  "screenshot_provider": "dcc-cua 1.8.2",
+  "graph": "crate_painted_wood",
+  "authoring_node_count": 19,
+  "paint_coverage": 0.7,
+  "files": [
+    {
+      "file": "basecolor-before.png",
+      "bytes": 963126,
+      "sha256": "605a833c545173c365bb9b60209a0b35ae726c64de6bcde631f28d2f29210311",
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "png_color_type": 2
+    },
+    {
+      "file": "baseColor.png",
+      "bytes": 863693,
+      "sha256": "cdc66b7a17feaf412e829a4b5f492b402bc8af73d3320c480d26bd28f8dcd2d2",
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "png_color_type": 2
+    },
+    {
+      "file": "designer-graph.png",
+      "bytes": 446855,
+      "sha256": "e17cf5301be0984a40c7d27b6c393fc890485406a652c7b6791d59e156f1bbff",
+      "width": 1568,
+      "height": 931,
+      "bit_depth": 8,
+      "png_color_type": 6
+    },
+    {
+      "file": "designer-session.png",
+      "bytes": 657397,
+      "sha256": "c589cc52964b8044d8b1d13fd771f5420b119b53e3eab133a0b62279ccfbf66f",
+      "width": 1568,
+      "height": 931,
+      "bit_depth": 8,
+      "png_color_type": 6
+    },
+    {
+      "file": "height.png",
+      "bytes": 1871650,
+      "sha256": "f6e176f5eefc98e7c8937c4d4a6880f56c46d0909ad70e439ed26a4c32c137e2",
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 16,
+      "png_color_type": 0
+    },
+    {
+      "file": "metallic.png",
+      "bytes": 14798,
+      "sha256": "df6704f51dd27ff6061ed65b4cda8d16ed20e834fb69621cbb3914bf6acf3a7c",
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "png_color_type": 2
+    },
+    {
+      "file": "normal.png",
+      "bytes": 7270820,
+      "sha256": "c2b87138e68be9b9c7de584b2f3d68d4b09479ce8ae1b350b1fd205941724e0e",
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 16,
+      "png_color_type": 6
+    },
+    {
+      "file": "painted-wood.sbs",
+      "bytes": 11145,
+      "sha256": "46de8ebb4c28eb8fef1042bce776aa8e2753186330f5e3e689809155f0b67943"
+    },
+    {
+      "file": "painted-wood.sbsar",
+      "bytes": 4132,
+      "sha256": "b337f8ab49ddc58c1d4f370dbbd773b794dc950d2e8a24545312f56992c1165f"
+    },
+    {
+      "file": "reference.png",
+      "bytes": 2375754,
+      "sha256": "6b628d137c02563968680764730718fbdf03b9c66c0d3bda7d59fa551c0aeccf",
+      "width": 1254,
+      "height": 1254,
+      "bit_depth": 8,
+      "png_color_type": 2
+    },
+    {
+      "file": "roughness.png",
+      "bytes": 483482,
+      "sha256": "949c7b826d68a4430b9073f1bf6202c51077870b23ebff03ceb3bb23b68ad815",
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "png_color_type": 2
+    }
+  ]
+}

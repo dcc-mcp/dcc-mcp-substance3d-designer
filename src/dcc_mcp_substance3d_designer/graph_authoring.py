@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import math
 import re
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
 _IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
 _PROPERTY_ID = re.compile(r"^\$?[A-Za-z][A-Za-z0-9_.-]{0,127}$")
-_TYPE_URL = re.compile(r"^sbs::[A-Za-z0-9_.-]+(?:::[A-Za-z0-9_.-]+)+$")
+_TYPE_URL = re.compile(r"^sbs(?:::[A-Za-z0-9_.-]+)+$")
 _COLOR_SPACE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_. +()-]{0,127}$")
 
 
@@ -34,6 +32,9 @@ def value(obj: Any, *names: str) -> Any:
 def items(collection: Any) -> list[Any]:
     if collection is None:
         return []
+    resolved = value(collection, "get")
+    if resolved is not None and resolved is not collection:
+        collection = resolved
     if isinstance(collection, (list, tuple)):
         return list(collection)
     try:
@@ -42,6 +43,9 @@ def items(collection: Any) -> list[Any]:
         size = value(collection, "getSize")
         if not isinstance(size, int):
             return []
+        get_item = getattr(collection, "getItem", None)
+        if callable(get_item):
+            return [get_item(index) for index in range(size)]
         return [collection[index] for index in range(size)]
 
 
@@ -127,7 +131,7 @@ def node_identifier(node: Any) -> str:
 
 
 def require_node_id(identifier: str, label: str = "node_id") -> str:
-    if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9_]{1,128}", identifier):
+    if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", identifier):
         raise GraphAuthoringError(f"{label} must be a bounded native node identifier", "INVALID_IDENTIFIER")
     return identifier
 
@@ -211,43 +215,27 @@ def connect_nodes(
     source_property: str,
     target_node: str,
     target_property: str,
-) -> dict[str, str]:
-    source_id = require_node_id(source_node, "source_node")
-    target_id = require_node_id(target_node, "target_node")
-    source_prop = require_property(source_property, "source_property")
-    target_prop = require_property(target_property, "target_property")
-    source = find_node(source_id)
-    target = find_node(target_id)
-    connection = source.newPropertyConnectionFromId(source_prop, target, target_prop)
-    if connection is None:
-        from sd.api.sdproperty import SDPropertyCategory
+    expected_graph_uid: str | None = None,
+) -> dict[str, Any]:
+    from .graph_connections import connect_nodes as connect
 
-        target_input = target.getPropertyFromId(target_prop, SDPropertyCategory.Input)
-        connected = items(target.getPropertyConnections(target_input)) if target_input else []
-        upstream_nodes = [value(item, "getInputPropertyNode", "getOutputPropertyNode") for item in connected]
-        if source not in upstream_nodes:
-            raise GraphAuthoringError(
-                "Designer rejected the typed property connection",
-                "CONNECTION_REJECTED",
-            )
-    return {
-        "source_node": source_id,
-        "source_property": source_prop,
-        "target_node": target_id,
-        "target_property": target_prop,
-    }
+    return connect(source_node, source_property, target_node, target_property, expected_graph_uid)
 
 
-def delete_node(node_id: str) -> dict[str, str]:
+def delete_node(node_id: str, expected_graph_uid: str | None = None) -> dict[str, str]:
     identifier = require_node_id(node_id)
-    graph = active_graph()
-    node = find_node(identifier)
+    from .graph_inspection import checked_graph, find_in_graph
+
+    graph = checked_graph(expected_graph_uid)
+    node = find_in_graph(graph, identifier)
     delete = getattr(graph, "deleteNode", None)
     if not callable(delete):
         raise GraphAuthoringError("Designer node deletion API is unavailable", "DELETE_API_UNAVAILABLE")
     result = delete(node)
     if result is False:
         raise GraphAuthoringError("Designer rejected node deletion", "NODE_DELETE_FAILED")
+    if any(node_identifier(item) == identifier for item in items(graph.getNodes())):
+        raise GraphAuthoringError("Deleted node remains in the graph", "NODE_DELETE_READBACK_FAILED")
     return {"node_id": identifier}
 
 
@@ -271,6 +259,8 @@ def set_node_position(node_id: str, position: list[float]) -> dict[str, Any]:
 def _numeric_sequence(raw: Any, size: int, label: str) -> list[float]:
     if not isinstance(raw, (list, tuple)) or len(raw) != size:
         raise GraphAuthoringError(f"{label} requires exactly {size} numeric values", "INVALID_VALUE")
+    if any(isinstance(item, bool) or not isinstance(item, (float, int)) for item in raw):
+        raise GraphAuthoringError(f"{label} values must be numeric", "INVALID_VALUE")
     try:
         values = [float(item) for item in raw]
     except (TypeError, ValueError) as exc:
@@ -289,7 +279,7 @@ def typed_value(value_type: str, raw: Any) -> Any:
 
         return SDValueBool.sNew(raw)
     if kind == "int":
-        if isinstance(raw, bool) or not isinstance(raw, int):
+        if isinstance(raw, bool) or not isinstance(raw, int) or not -(2**31) <= raw < 2**31:
             raise GraphAuthoringError("int values must be integers", "INVALID_VALUE")
         from sd.api.sdvalueint import SDValueInt
 
@@ -299,6 +289,8 @@ def typed_value(value_type: str, raw: Any) -> Any:
             raise GraphAuthoringError("float values must be numeric", "INVALID_VALUE")
         from sd.api.sdvaluefloat import SDValueFloat
 
+        if not math.isfinite(raw) or abs(raw) > 1_000_000:
+            raise GraphAuthoringError("float value is out of range", "INVALID_VALUE")
         return SDValueFloat.sNew(float(raw))
     if kind == "string":
         if not isinstance(raw, str) or len(raw) > 4096:
@@ -308,6 +300,7 @@ def typed_value(value_type: str, raw: Any) -> Any:
         return SDValueString.sNew(raw)
     vector_specs = {
         "colorrgba": (4, "ColorRGBA", "SDValueColorRGBA", "sd.api.sdvaluecolorrgba"),
+        "color": (4, "ColorRGBA", "SDValueColorRGBA", "sd.api.sdvaluecolorrgba"),
         "int2": (2, "int2", "SDValueInt2", "sd.api.sdvalueint2"),
         "float2": (2, "float2", "SDValueFloat2", "sd.api.sdvaluefloat2"),
         "float3": (3, "float3", "SDValueFloat3", "sd.api.sdvaluefloat3"),
@@ -337,29 +330,49 @@ def json_value(raw: Any) -> Any:
     if isinstance(raw, (list, tuple)):
         return [json_value(item) for item in raw]
     components = []
-    component_names = ("r", "g", "b", "a") if hasattr(raw, "r") else ("x", "y", "z", "w")
-    for name in component_names:
+    for name in ("x", "y", "z", "w"):
         component = value(raw, name)
         if component is None:
             break
         components.append(component)
     if components:
         return [json_value(component) for component in components]
+    if all(hasattr(raw, name) for name in ("r", "g", "b", "a")):
+        return [json_value(getattr(raw, name)) for name in ("r", "g", "b", "a")]
     identifier = value(raw, "getId", "getIdentifier")
     if identifier is not None:
         return str(identifier)
     return {"type": type(raw).__name__}
 
 
-def set_parameter(node_id: str, parameter: str, value_type: str, raw: Any) -> dict[str, Any]:
-    identifier = require_property(parameter, "parameter")
-    node = find_node(node_id)
-    node.setInputPropertyValueFromId(identifier, typed_value(value_type, raw))
+def set_parameter(
+    node_id: str, parameter: str, value_type: str, raw: Any, expected_graph_uid: str | None = None
+) -> dict[str, Any]:
+    from .graph_inspection import checked_graph, find_in_graph, property_types, require_input
+
+    graph = checked_graph(expected_graph_uid)
+    node = find_in_graph(graph, node_id)
+    prop = require_input(node, parameter)
+    if prop.isReadOnly():
+        raise GraphAuthoringError("Input property is read-only", "PROPERTY_READ_ONLY")
+    if items(node.getPropertyConnections(prop)):
+        raise GraphAuthoringError("Disconnect the input before setting its value", "INPUT_CONNECTED")
+    if node.getPropertyGraph(prop) is not None:
+        raise GraphAuthoringError("Input has a function graph", "PROPERTY_GRAPH_CONNECTED")
+    wrapped = typed_value(value_type, raw)
+    expected_type = wrapped.getType().getId()
+    if expected_type not in {kind["id"] for kind in property_types(prop)}:
+        raise GraphAuthoringError("Value type is not supported by the input", "PARAMETER_TYPE_MISMATCH")
+    node.setInputPropertyValueFromId(prop.getId(), wrapped)
+    observed = json_value(node.getPropertyValue(prop))
+    expected = json_value(wrapped)
+    if observed != expected:
+        raise GraphAuthoringError("Parameter readback did not match the requested value", "PARAMETER_READBACK_FAILED")
     return {
         "node_id": node_identifier(node),
-        "parameter": identifier,
+        "parameter": prop.getId(),
         "value_type": str(value_type).lower(),
-        "value": raw,
+        "value": observed,
     }
 
 
@@ -379,34 +392,35 @@ def get_parameter(node_id: str, parameter: str) -> dict[str, Any]:
     }
 
 
-def expose_parameter(node_id: str, parameter: str, exposed_id: str) -> dict[str, str]:
-    identifier = require_property(parameter, "parameter")
-    public_id = require_identifier(exposed_id, "exposed_id")
+def expose_parameter(
+    node_id: str, parameter: str, exposed_id: str, expected_graph_uid: str | None = None
+) -> dict[str, Any]:
+    from .graph_parameters import expose_parameter as expose
 
-    from sd.api.sdproperty import SDPropertyCategory
-
-    graph = active_graph()
-    node = find_node(node_id)
-    prop = node.getPropertyFromId(identifier, SDPropertyCategory.Input)
-    if prop is None:
-        raise GraphAuthoringError(f"Input parameter '{identifier}' was not found", "PARAMETER_NOT_FOUND")
-    expose = getattr(graph, "exposeProperty", None)
-    if not callable(expose):
-        raise GraphAuthoringError(
-            "This Designer build does not expose a supported parameter-binding API",
-            "EXPOSE_API_UNAVAILABLE",
-        )
-    exposed = expose(node, prop, public_id)
-    if exposed is None or exposed is False:
-        raise GraphAuthoringError("Designer rejected the exposed parameter", "EXPOSE_FAILED")
-    return {"node_id": node_identifier(node), "parameter": identifier, "exposed_id": public_id}
+    return expose(node_id, parameter, exposed_id, expected_graph_uid)
 
 
 def add_output(
     output_id: str,
     position: list[float] | None = None,
 ) -> dict[str, Any]:
-    output = create_node("sbs::compositing::output", output_id, position)
+    from .graph_inspection import find_in_graph
+
+    identifier = require_identifier(output_id)
+    graph = active_graph()
+    if identifier in [json_value(item) for item in items(graph.getOutputIdentifiers())]:
+        raise GraphAuthoringError("Output identifier already exists", "DUPLICATE_OUTPUT_ID")
+    output = create_node("sbs::compositing::output", identifier, position)
+    from sd.api.sdvaluestring import SDValueString
+
+    node = find_in_graph(graph, output["node_id"])
+    try:
+        node.setAnnotationPropertyValueFromId("identifier", SDValueString.sNew(identifier))
+        if json_value(node.getAnnotationPropertyValueFromId("identifier")) != identifier:
+            raise GraphAuthoringError("Output identifier readback failed", "OUTPUT_IDENTIFIER_READBACK_FAILED")
+    except BaseException:
+        graph.deleteNode(node)
+        raise
     return output
 
 
@@ -430,9 +444,18 @@ def set_output_usage(
     from sd.api.sdvalueusage import SDUsage, SDValueUsage
 
     node = find_node(node_id)
+    if node.getDefinition().getId() != "sbs::compositing::output":
+        raise GraphAuthoringError("Usage metadata requires an output node", "NOT_OUTPUT_NODE")
     usages = SDValueArray.sNew(SDTypeUsage.sNew(), 0)
     usages.pushBack(SDValueUsage.sNew(SDUsage.sNew(resolved_usage, resolved_channels, resolved_space)))
     node.setAnnotationPropertyValueFromId("usages", usages)
+    readback = items(node.getAnnotationPropertyValueFromId("usages"))
+    actual = []
+    for wrapped in readback:
+        item = value(wrapped, "get") or wrapped
+        actual.append((item.getName(), item.getComponents(), item.getColorSpace()))
+    if actual != [(resolved_usage, resolved_channels, resolved_space)]:
+        raise GraphAuthoringError("Output usage readback failed", "OUTPUT_USAGE_READBACK_FAILED")
     return {
         "node_id": node_identifier(node),
         "usage": resolved_usage,
@@ -458,11 +481,9 @@ def new_package() -> dict[str, Any]:
 
 
 def open_package(path: str) -> dict[str, Any]:
-    resolved = _sbs_path(path, must_exist=True)
-    package = package_manager().loadUserPackage(str(resolved), True)
-    if package is None:
-        raise GraphAuthoringError("Designer could not open the package", "PACKAGE_OPEN_FAILED")
-    return {"package_path": str(resolved), "saved": True}
+    from .graph_resources import open_package as open_existing
+
+    return open_existing(path)
 
 
 def save_package() -> dict[str, Any]:
@@ -470,17 +491,30 @@ def save_package() -> dict[str, Any]:
     if not package_path(package):
         raise GraphAuthoringError("Unsaved package requires save_package_as", "PACKAGE_PATH_REQUIRED")
     result = package_manager().savePackage(package)
-    if result is False:
+    artifact = Path(package_path(package))
+    if result is False or package.isModified() or not artifact.is_file() or not artifact.stat().st_size:
         raise GraphAuthoringError("Designer could not save the package", "PACKAGE_SAVE_FAILED")
     return {"package_path": package_path(package), "saved": True}
 
 
-def save_package_as(path: str) -> dict[str, Any]:
+def save_package_as(path: str, expected_graph_uid: str | None = None) -> dict[str, Any]:
+    from .graph_inspection import checked_graph
+
+    if expected_graph_uid is not None:
+        checked_graph(expected_graph_uid)
     resolved = _sbs_path(path, must_exist=False)
     package = active_package()
+    if resolved.exists() and (not package_path(package) or resolved != Path(package_path(package)).resolve()):
+        raise GraphAuthoringError("Refusing to overwrite another package", "PACKAGE_ALREADY_EXISTS")
     resolved.parent.mkdir(parents=True, exist_ok=True)
     result = package_manager().savePackageAs(package, str(resolved))
-    if result is False:
+    if (
+        result is False
+        or package.isModified()
+        or not resolved.is_file()
+        or not resolved.stat().st_size
+        or Path(package_path(package)).resolve() != resolved
+    ):
         raise GraphAuthoringError("Designer could not save the package", "PACKAGE_SAVE_FAILED")
     return {"package_path": str(resolved), "saved": True}
 
@@ -488,6 +522,8 @@ def save_package_as(path: str) -> dict[str, Any]:
 def close_package() -> dict[str, Any]:
     package = active_package()
     resolved_path = package_path(package)
+    if package.isModified():
+        raise GraphAuthoringError("Save the modified package before closing", "PACKAGE_MODIFIED")
     result = package_manager().unloadUserPackage(package)
     if result is False:
         raise GraphAuthoringError("Designer could not close the package", "PACKAGE_CLOSE_FAILED")
@@ -535,64 +571,27 @@ def export_maps(
     image_format: str = "png",
     bit_depth: str = "8",
     color_space: str = "Raw",
+    expected_graph_uid: str | None = None,
+    output_color_spaces: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    format_options = {"png", "tga", "tiff", "exr"}
-    depth_options = {"8", "16", "16f", "32f"}
-    resolved_format = str(image_format).lower()
-    resolved_depth = str(bit_depth).lower()
-    if resolved_format not in format_options:
-        raise GraphAuthoringError("Unsupported output image format", "INVALID_IMAGE_FORMAT")
-    if resolved_depth not in depth_options:
-        raise GraphAuthoringError("Unsupported output bit depth", "INVALID_BIT_DEPTH")
-    resolved_space = str(color_space).strip()
-    if not _COLOR_SPACE.fullmatch(resolved_space):
-        raise GraphAuthoringError("color_space must be a bounded non-empty name", "INVALID_COLOR_SPACE")
-    package = active_package()
-    source = package_path(package)
-    if not source:
-        raise GraphAuthoringError("Save the package before exporting maps", "PACKAGE_PATH_REQUIRED")
-    executable = shutil.which("sbsrender")
-    if executable is None:
-        raise GraphAuthoringError("Official sbsrender is unavailable", "SBSRENDER_UNAVAILABLE")
-    destination = Path(output_dir).expanduser().resolve()
-    destination.mkdir(parents=True, exist_ok=True)
-    command = [
-        executable,
-        "render",
-        "--input",
-        source,
-        "--output-path",
-        str(destination),
-        "--output-format",
-        resolved_format,
-        "--output-bit-depth",
-        resolved_depth,
-        "--output-colorspace",
-        resolved_space,
-    ]
-    completed = subprocess.run(command, capture_output=True, text=True, timeout=600, check=False)
-    if completed.returncode != 0:
-        raise GraphAuthoringError("Official sbsrender failed", "MAP_EXPORT_FAILED")
-    return {
-        "output_dir": str(destination),
-        "image_format": resolved_format,
-        "bit_depth": resolved_depth,
-        "color_space": resolved_space,
-    }
+    from .graph_evaluation import export_maps as export
+
+    return export(output_dir, image_format, bit_depth, color_space, expected_graph_uid, output_color_spaces)
 
 
 def export_sbsar(path: str) -> dict[str, str]:
     destination = Path(path).expanduser().resolve()
     if destination.suffix.casefold() != ".sbsar":
         raise GraphAuthoringError("SBSAR path must end with .sbsar", "INVALID_SBSAR_PATH")
+    if destination.exists():
+        raise GraphAuthoringError("Use a fresh SBSAR destination", "SBSAR_ALREADY_EXISTS")
 
-    import sd
     from sd.api.sbs.sdsbsarexporter import SDSBSARExporter
 
     package = active_package()
     destination.parent.mkdir(parents=True, exist_ok=True)
-    exporter = SDSBSARExporter(sd.getContext(), None).sNew()
+    exporter = SDSBSARExporter.sNew()
     result = exporter.exportPackageToSBSAR(package, str(destination))
-    if result is False or not destination.is_file():
+    if result is False or not destination.is_file() or not destination.stat().st_size:
         raise GraphAuthoringError("Designer did not produce the SBSAR artifact", "SBSAR_EXPORT_FAILED")
     return {"sbsar_path": str(destination)}

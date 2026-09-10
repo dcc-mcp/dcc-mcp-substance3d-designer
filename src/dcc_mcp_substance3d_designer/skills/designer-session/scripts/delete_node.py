@@ -9,5 +9,5 @@ from dcc_mcp_substance3d_designer.skill_support import typed_result
 
 
 @skill_entry
-def main(node_id: str, **_kwargs):
-    return typed_result("Deleted Designer graph node", delete_node, node_id)
+def main(node_id: str, expected_graph_uid: str | None = None, **_kwargs):
+    return typed_result("Deleted Designer graph node", delete_node, node_id, expected_graph_uid)

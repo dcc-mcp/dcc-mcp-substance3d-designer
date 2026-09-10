@@ -11,5 +11,7 @@ from dcc_mcp_substance3d_designer.skill_support import typed_result
 
 
 @skill_entry
-def main(node_id: str, parameter: str, value_type: str, value: Any, **_kwargs):
-    return typed_result("Set Designer node parameter", set_parameter, node_id, parameter, value_type, value)
+def main(node_id: str, parameter: str, value_type: str, value: Any, expected_graph_uid: str | None = None, **_kwargs):
+    return typed_result(
+        "Set Designer node parameter", set_parameter, node_id, parameter, value_type, value, expected_graph_uid
+    )

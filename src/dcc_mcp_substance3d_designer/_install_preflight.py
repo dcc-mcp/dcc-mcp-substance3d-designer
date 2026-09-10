@@ -340,7 +340,20 @@ print(json.dumps({
     )
     if not completed.get("success") or completed.get("truncated"):
         reason = str(completed.get("reason") or "probe failed")
-        public_reason = "probe timed out" if reason == "probe timed out" else "probe failed"
+        reasons = {
+            "probe timed out": "probe timed out",
+            "probe cleanup failed": "probe failed (cleanup)",
+            "probe returned invalid status": "probe failed (invalid supervisor status)",
+            "probe supervisor exited unexpectedly": "probe failed (supervisor exit)",
+            "probe output exceeded limit": "probe failed (output limit)",
+            "probe left owned descendants": "probe failed (live descendants)",
+            "probe output read failed": "probe failed (output read)",
+            "probe output inspection failed": "probe failed (output inspection)",
+            "probe launch failed": "probe failed (child launch)",
+        }
+        public_reason = reasons.get(reason, "probe failed")
+        if type(completed.get("returncode")) is int:
+            public_reason += " (exit {})".format(completed["returncode"])
         raise LifecycleFailure("python", f"Target interpreter import check {public_reason}.")
     try:
         result = json.loads(str(completed.get("stdout") or "").strip().splitlines()[-1])

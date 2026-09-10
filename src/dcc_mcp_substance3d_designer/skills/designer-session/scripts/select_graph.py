@@ -1,5 +1,7 @@
 """Select an explicit graph in an already loaded package."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from dcc_mcp_core.skill import skill_entry
@@ -25,5 +27,9 @@ def select_graph(package_path: str, graph_id: str) -> dict:
 
 
 @skill_entry
-def main(package_path: str, graph_id: str, **_kwargs):
+def main(package_path: str, graph_id: str | None = None, resource_url: str | None = None, **_kwargs):
+    if resource_url is not None:
+        from dcc_mcp_substance3d_designer.graph_resources import select_graph as select_resource
+
+        return typed_result("Selected Designer graph", select_resource, package_path, resource_url)
     return typed_result("Selected Designer graph", select_graph, package_path, graph_id)

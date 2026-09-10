@@ -4,28 +4,30 @@
   <img src="docs/assets/dcc-mcp-substance3d-designer.svg" alt="DCC-MCP · SUBSTANCE3D-DESIGNER" width="600">
 </p>
 
-## Showcase: reference image to editable material
+## Showcase: reference image to Designer materials and Blender lookdev
 
-A Codex-generated reference guided a procedural painted-wood material authored
-and evaluated in **Substance 3D Designer 16** through DCC-MCP. The olive paint and
-exposed wood were color-corrected in the graph before exporting the maps.
+A Codex-generated reference guided a **2 m wooden crate modeled in Blender**
+with painted wood and rusted steel authored in **Substance 3D Designer 16**.
+Wood scratches, metal scratches and rust are independent procedural layers in
+the SD graphs. Their exported PBR maps drive the Blender materials.
 
-| Codex-generated reference | Base Color generated in Designer |
+| Codex-generated reference | Blender Cycles render using SD maps |
 | --- | --- |
-| ![Generated weathered-crate reference](docs/showcase/painted-wood/reference.png) | ![Color-corrected procedural painted wood](docs/showcase/painted-wood/baseColor.png) |
+| ![Generated weathered-crate reference](docs/showcase/painted-wood/reference.png) | ![Elongated crate with procedural wood scratches and rusted hardware](docs/showcase/crate-lookdev/render.png) |
 
-**Complete material graph — real Designer screenshot, 19 nodes:**
+**Complete material graphs — unretouched Designer screenshots:**
 
-![Complete painted-wood node workflow captured in Substance 3D Designer](docs/showcase/painted-wood/designer-graph.png)
+| Painted wood: 24 nodes | Rusted steel: 27 nodes |
+| --- | --- |
+| ![Complete painted-wood and scratch workflow](docs/showcase/crate-lookdev/wood/designer-graph.png) | ![Complete rust and metal-scratch workflow](docs/showcase/crate-lookdev/steel/designer-graph.png) |
 
-[Download the editable SBS](docs/showcase/painted-wood/painted-wood.sbs) ·
-[Compiled SBSAR](docs/showcase/painted-wood/painted-wood.sbsar) ·
-[All five maps, before/after colors, and capture details](docs/showcase/painted-wood/README.md)
+[Blender scene with packed textures](docs/showcase/crate-lookdev/crate.blend) ·
+[Editable SBS, SBSAR, maps and workflow](docs/showcase/crate-lookdev/README.md) ·
+[Earlier color-correction study](docs/showcase/painted-wood/README.md)
 
-This example reconstructs a tileable **surface material**. The generated crate
-image is a reference, not a Designer render; crate geometry, hardware and UVs
-are outside this example. Screenshots and exported maps are actual Designer
-outputs, captured through the project's DCC-CUA route.
+The crate is a reference-guided modeling and lookdev study. Its proportions,
+board UVs and hardware were authored in Blender; it is not a scan of the
+generated image. The material screenshots use the project's DCC-CUA route.
 
 ## Agent workflow
 

@@ -1,0 +1,203 @@
+{
+  "schema_version": 1,
+  "reference": "../painted-wood/reference.png",
+  "material_application": "Substance 3D Designer 16.0.0",
+  "render_application": "Blender 5.2.0 LTS",
+  "capture_provider": "dcc-cua",
+  "capture_runtime": "1.8.2",
+  "screen_capture_policy": "unretouched full authoring graphs; library internals not expanded",
+  "nominal_crate_length_m": 2.0,
+  "files": [
+    {
+      "path": "crate.blend",
+      "sha256": "172b739079db876ddea37b17227f2ef51a3e0bc8ea392e20ebc488d2efb4f967",
+      "bytes": 20755019
+    },
+    {
+      "path": "detail.png",
+      "sha256": "e00dad45b2c52dc0f8978cf50152f766e71dd816bd5f717e99741fd1467ff161",
+      "bytes": 2454052,
+      "width": 1200,
+      "height": 1200,
+      "bit_depth": 8,
+      "color_type": 6
+    },
+    {
+      "path": "render.png",
+      "sha256": "af5ff910fe261cce1dc5e7d9d2898e423c9244612dfe340cd65ffb1192ca4aae",
+      "bytes": 3312385,
+      "width": 1600,
+      "height": 1600,
+      "bit_depth": 8,
+      "color_type": 6
+    },
+    {
+      "path": "steel/baseColor.png",
+      "sha256": "76b0e45bbfe8d69778f145799008145221597003647909ccbeff032fbbe56251",
+      "bytes": 1349731,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "color_type": 2
+    },
+    {
+      "path": "steel/designer-graph.png",
+      "sha256": "532a70754a96e352d2f9033642d186c92ea2704eb52755fa1f54b10e4c9c48ca",
+      "bytes": 551383,
+      "width": 1568,
+      "height": 931,
+      "bit_depth": 8,
+      "color_type": 6
+    },
+    {
+      "path": "steel/height.png",
+      "sha256": "c487d29e8bb813eeaf06b1e7ce552c16abc61a10b3902514deffaaa52150727b",
+      "bytes": 1186893,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 16,
+      "color_type": 0
+    },
+    {
+      "path": "steel/material.sbs",
+      "sha256": "17426b74ce83162cd2f431d470d552d30dc9c549f06dc36a999ac09dbe0abdf2",
+      "bytes": 15564,
+      "nodes": 27,
+      "dependencies": [
+        "sbs://grunge_rust_fine.sbs",
+        "sbs://scratches_generator.sbs"
+      ]
+    },
+    {
+      "path": "steel/material.sbsar",
+      "sha256": "9aa9a99de6a5c0a69f4ccbb28fb1cd977fc225a07f283bb0cb84e84249fef2ca",
+      "bytes": 6298,
+      "container": "native SBSAR / 7z"
+    },
+    {
+      "path": "steel/metallic.png",
+      "sha256": "32a373f04924ac83391362ead0776a30dbf266967f6947dd0741fe666bcf2e5e",
+      "bytes": 797199,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "color_type": 2
+    },
+    {
+      "path": "steel/normal.png",
+      "sha256": "c29a660df08aef9f732a53647af4d942436c7547f5c51a5985d3269b29140344",
+      "bytes": 5228799,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 16,
+      "color_type": 6
+    },
+    {
+      "path": "steel/roughness.png",
+      "sha256": "2943910fb4f6f48e8211d3f397bf835f4bb4a4a4cfd93d57881a674fc5d589ab",
+      "bytes": 926597,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "color_type": 2
+    },
+    {
+      "path": "steel/rustMask.png",
+      "sha256": "dd2b77d5a029516496fefceeee5d2f0371ac54fc9371368b533fcf95503bab86",
+      "bytes": 958745,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 16,
+      "color_type": 0
+    },
+    {
+      "path": "steel/scratchMask.png",
+      "sha256": "d468b3ff500bc5cb6d6a9fb8d0113a6bf2924154d454b2d725762c3f779bf34f",
+      "bytes": 103888,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "color_type": 0
+    },
+    {
+      "path": "wood/baseColor.png",
+      "sha256": "50b036f937f19c2b373dc4a897acec581e415b34600e2632672a13542abf1086",
+      "bytes": 932077,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "color_type": 2
+    },
+    {
+      "path": "wood/designer-graph.png",
+      "sha256": "bb706404737e96b8b8ce816d3ef89cba6217ed21a1335752120d4ef509d27e97",
+      "bytes": 524427,
+      "width": 1568,
+      "height": 931,
+      "bit_depth": 8,
+      "color_type": 6
+    },
+    {
+      "path": "wood/height.png",
+      "sha256": "875225f6616b89c106471b2f10e114adcd2cb03495e5950a40baf7f3a212c66e",
+      "bytes": 1875871,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 16,
+      "color_type": 0
+    },
+    {
+      "path": "wood/material.sbs",
+      "sha256": "0c1126cf099aa82372434784b8a410048126236180e8e6e847a62d37ef31ae0a",
+      "bytes": 15116,
+      "nodes": 24,
+      "dependencies": [
+        "sbs://wood_fibers_1.sbs",
+        "sbs://grunge_leaky_paint.sbs",
+        "sbs://noise_directional_scratches.sbs"
+      ]
+    },
+    {
+      "path": "wood/material.sbsar",
+      "sha256": "a16591892fca0a1b65c0d1bef35effe341ad16a6e806a96e43761400de3e10a5",
+      "bytes": 4369,
+      "container": "native SBSAR / 7z"
+    },
+    {
+      "path": "wood/metallic.png",
+      "sha256": "df6704f51dd27ff6061ed65b4cda8d16ed20e834fb69621cbb3914bf6acf3a7c",
+      "bytes": 14798,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "color_type": 2
+    },
+    {
+      "path": "wood/normal.png",
+      "sha256": "00342e8c47f1efc9aeb0dae47cd4d29a54533fca08e2bc3f254e58062bb16a28",
+      "bytes": 7529529,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 16,
+      "color_type": 6
+    },
+    {
+      "path": "wood/roughness.png",
+      "sha256": "8f0c09ba284df0d20e427e75465c9acdb1f943ec5f9da1fbfb27f96b7a323e17",
+      "bytes": 516216,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "color_type": 2
+    },
+    {
+      "path": "wood/scratchMask.png",
+      "sha256": "ce7a42cc3b5497a077397c01d31af3118b89dc30eba38dd69e6584d8a0d525c7",
+      "bytes": 145192,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 16,
+      "color_type": 0
+    }
+  ]
+}

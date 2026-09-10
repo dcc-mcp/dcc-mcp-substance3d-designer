@@ -126,6 +126,25 @@ def node_identifier(node: Any) -> str:
     return str(identifier)
 
 
+def require_node_id(identifier: str, label: str = "node_id") -> str:
+    if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9_]{1,128}", identifier):
+        raise GraphAuthoringError(f"{label} must be a bounded native node identifier", "INVALID_IDENTIFIER")
+    return identifier
+
+
+def name_node(node: Any, name: str) -> bool:
+    """Assign an identifier only on SDKs that expose a writable identifier.
+
+    Compositing nodes have read-only native IDs. Their annotation properties
+    are not arbitrary user metadata, so never invent a label property.
+    """
+    setter = getattr(node, "setIdentifier", None)
+    if callable(setter):
+        setter(name)
+        return True
+    return False
+
+
 def create_node(
     type_url: str,
     node_id: str | None = None,
@@ -145,15 +164,23 @@ def create_node(
 
     from sd.api.sdbasetypes import float2
 
-    node = active_graph().newNode(resolved_type)
+    graph = active_graph()
+    node = graph.newNode(resolved_type)
     if node is None:
         raise GraphAuthoringError("Designer rejected the requested node type", "NODE_TYPE_UNAVAILABLE")
-    if resolved_id is not None:
-        node.setIdentifier(resolved_id)
-    else:
-        resolved_id = node_identifier(node)
-    node.setPosition(float2(*xy))
-    return {"node_id": resolved_id, "type_url": resolved_type, "position": xy}
+    try:
+        assigned = name_node(node, resolved_id) if resolved_id is not None else False
+        node.setPosition(float2(*xy))
+        return {
+            "node_id": node_identifier(node),
+            "type_url": resolved_type,
+            "position": xy,
+            "requested_node_id": resolved_id,
+            "identifier_assigned": assigned,
+        }
+    except BaseException:
+        graph.deleteNode(node)
+        raise
 
 
 def create_graph(graph_id: str, open_in_editor: bool = True) -> dict[str, Any]:
@@ -172,7 +199,7 @@ def create_graph(graph_id: str, open_in_editor: bool = True) -> dict[str, Any]:
 
 
 def find_node(node_id: str) -> Any:
-    identifier = require_identifier(node_id, "node_id")
+    identifier = require_node_id(node_id)
     for node in items(active_graph().getNodes()):
         if node_identifier(node) == identifier:
             return node
@@ -185,8 +212,8 @@ def connect_nodes(
     target_node: str,
     target_property: str,
 ) -> dict[str, str]:
-    source_id = require_identifier(source_node, "source_node")
-    target_id = require_identifier(target_node, "target_node")
+    source_id = require_node_id(source_node, "source_node")
+    target_id = require_node_id(target_node, "target_node")
     source_prop = require_property(source_property, "source_property")
     target_prop = require_property(target_property, "target_property")
     source = find_node(source_id)
@@ -212,7 +239,7 @@ def connect_nodes(
 
 
 def delete_node(node_id: str) -> dict[str, str]:
-    identifier = require_identifier(node_id, "node_id")
+    identifier = require_node_id(node_id)
     graph = active_graph()
     node = find_node(identifier)
     delete = getattr(graph, "deleteNode", None)
@@ -280,6 +307,7 @@ def typed_value(value_type: str, raw: Any) -> Any:
 
         return SDValueString.sNew(raw)
     vector_specs = {
+        "colorrgba": (4, "ColorRGBA", "SDValueColorRGBA", "sd.api.sdvaluecolorrgba"),
         "int2": (2, "int2", "SDValueInt2", "sd.api.sdvalueint2"),
         "float2": (2, "float2", "SDValueFloat2", "sd.api.sdvaluefloat2"),
         "float3": (3, "float3", "SDValueFloat3", "sd.api.sdvaluefloat3"),
@@ -309,7 +337,8 @@ def json_value(raw: Any) -> Any:
     if isinstance(raw, (list, tuple)):
         return [json_value(item) for item in raw]
     components = []
-    for name in ("x", "y", "z", "w"):
+    component_names = ("r", "g", "b", "a") if hasattr(raw, "r") else ("x", "y", "z", "w")
+    for name in component_names:
         component = value(raw, name)
         if component is None:
             break

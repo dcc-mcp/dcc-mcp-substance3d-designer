@@ -17,6 +17,16 @@ fine wood grain uses a separate UV layer with consistent physical density.
 | --- | --- |
 | ![Generated weathered-crate reference](docs/showcase/painted-wood/reference.png) | ![Elongated crate with procedural wood scratches and rusted hardware](docs/showcase/crate-lookdev/render.png) |
 
+**Model UVs — coordinates and a rendered checker:**
+
+| UV coordinates | Checker on the model |
+| --- | --- |
+| ![Actual BoardUV and WoodDetailUV coordinates](docs/showcase/crate-lookdev/uv-layout.png) | ![Metric wood UV checker rendered in Blender](docs/showcase/crate-lookdev/uv-checker.png) |
+
+Wood detail uses one tile per 0.45 m. UVs intentionally tile and overlap;
+the [UV review](docs/showcase/crate-lookdev/README.md#geometry-displacement-and-uvs)
+explains the two layers and the existing steel UVs.
+
 **Complete material graphs — unretouched Designer screenshots:**
 
 | Painted wood: 37 nodes | Rusted steel: 35 nodes |
@@ -27,6 +37,8 @@ fine wood grain uses a separate UV layer with consistent physical density.
 [Editable SBS, SBSAR, maps and workflow](docs/showcase/crate-lookdev/README.md) ·
 [UV checker](docs/showcase/crate-lookdev/uv-checker.png) ·
 [Broken wood detail](docs/showcase/crate-lookdev/detail.png) ·
+[Blender showcase](https://github.com/dcc-mcp/dcc-mcp-blender/tree/main/docs/showcase/crate-lookdev) ·
+[Website gallery](https://dcc-mcp.github.io/showcase#blender-designer-crate) ·
 [Earlier color-correction study](docs/showcase/painted-wood/README.md)
 
 The crate is a reference-guided modeling and lookdev study. Its proportions,

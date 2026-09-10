@@ -5,18 +5,18 @@
   "render_application": "Blender 5.2.0 LTS",
   "capture_provider": "dcc-cua",
   "capture_runtime": "1.8.2",
-  "screen_capture_policy": "unretouched full authoring graphs; library internals not expanded",
-  "nominal_crate_length_m": 2.0,
+  "screen_capture_policy": "unretouched complete authoring graph captures; library internals not expanded",
+  "nominal_crate_length_m": 2.2,
   "files": [
     {
       "path": "crate.blend",
-      "sha256": "1098d4fcb3a48d4ce6bc7988f64a57b99f44a594d2bb2aa1383a4b4e321396fb",
-      "bytes": 33531219
+      "sha256": "39f113b549bfea986d064be128a242f21b288775ccc0be81784c14c01e4e9716",
+      "bytes": 77739815
     },
     {
       "path": "detail.png",
-      "sha256": "29f658224756f599638650edb75c1f7f68955434577551142f2ab048f88baff8",
-      "bytes": 2484274,
+      "sha256": "f7ee8828dfa154e3542861130621507b3fa4463e0d2d5e0215e188f45862d828",
+      "bytes": 2609450,
       "width": 1400,
       "height": 1100,
       "bit_depth": 8,
@@ -24,17 +24,26 @@
     },
     {
       "path": "render.png",
-      "sha256": "9a47b8f10a2906b2671f17cf800a61a4ed626af485b62ac812bfd312e279a084",
-      "bytes": 3434794,
+      "sha256": "5a80bc5aece619b5c95ed3882e7e14296388e0a3b8cfc7bbd13be6c59576c6ff",
+      "bytes": 3219088,
       "width": 1600,
       "height": 1600,
       "bit_depth": 8,
       "color_type": 6
     },
     {
+      "path": "splinters.png",
+      "sha256": "fd7471df61e7a95bdf388e27df3d2098d2495dffd9aafc5a06dbb578c0670b76",
+      "bytes": 2498127,
+      "width": 1400,
+      "height": 1100,
+      "bit_depth": 8,
+      "color_type": 6
+    },
+    {
       "path": "steel/bareSteelColor.png",
-      "sha256": "0f43c23751dca61a40d47f5318b06f5aa4cf2a99e1b9da0e38dc88e7f54c49b4",
-      "bytes": 1293405,
+      "sha256": "48fce53a160e2a73aa501b1c55b03a5c312e6ce90f1965232de70027a9b6bdf1",
+      "bytes": 1567531,
       "width": 1024,
       "height": 1024,
       "bit_depth": 8,
@@ -42,8 +51,8 @@
     },
     {
       "path": "steel/baseColor.png",
-      "sha256": "83d0fe0a7bad66dbd03f0460607644ea0fe3f4440af9305da0394225658f123c",
-      "bytes": 1805896,
+      "sha256": "01bd3c7cb04187a545877862c0568ee450e696799a738c624f07eed8bdd830c4",
+      "bytes": 1925394,
       "width": 1024,
       "height": 1024,
       "bit_depth": 8,
@@ -51,8 +60,8 @@
     },
     {
       "path": "steel/designer-graph.png",
-      "sha256": "ce164d9a284560ef4c27de0355e7ab8009a7e08925a5c1d37506ade3fd5e285d",
-      "bytes": 617425,
+      "sha256": "314d692b9ea1a965dc1ad324834d7b041cc81921e9340022760ad9dce252b621",
+      "bytes": 812947,
       "width": 1568,
       "height": 931,
       "bit_depth": 8,
@@ -60,8 +69,8 @@
     },
     {
       "path": "steel/height.png",
-      "sha256": "02f0919ccfa5180968ae621502f8c0ac0399fb20f58fbdae37f2831750799552",
-      "bytes": 1935080,
+      "sha256": "0bba5bde435168286f8399779df40736edb89c3f505c5299b9747b967501a08f",
+      "bytes": 1935094,
       "width": 1024,
       "height": 1024,
       "bit_depth": 16,
@@ -69,9 +78,9 @@
     },
     {
       "path": "steel/material.sbs",
-      "sha256": "162b548c13c6949e93407bc9b0d320be0323e258f56ea711634ccfa5fe217300",
-      "bytes": 18471,
-      "nodes": 32,
+      "sha256": "9845f2df9b926bc452af28eae0229d02b7c4b5053f4e7c432232bbe122619845",
+      "bytes": 19887,
+      "nodes": 35,
       "dependencies": [
         "sbs://grunge_rust_fine.sbs",
         "sbs://scratches_generator.sbs"
@@ -79,14 +88,14 @@
     },
     {
       "path": "steel/material.sbsar",
-      "sha256": "12fc2d319442ff5b329dc3f37690db8d422861900bc11cfaf8feea537ed07817",
-      "bytes": 6352,
+      "sha256": "85d129b2c1b5a45d0392f4f2b45405d3ffed509d94fe8ec8628e2d19c12e9c63",
+      "bytes": 6416,
       "container": "native SBSAR / 7z"
     },
     {
       "path": "steel/metallic.png",
-      "sha256": "9ecea5bbde3ffb67e57aabaee019d8909db3bdac3a236269777027691db69727",
-      "bytes": 630674,
+      "sha256": "c6a500ac2eff35a92945c8f0157e98c7c737b8ff6622cbcdc249b210bb83a08a",
+      "bytes": 630653,
       "width": 1024,
       "height": 1024,
       "bit_depth": 8,
@@ -94,8 +103,8 @@
     },
     {
       "path": "steel/normal.png",
-      "sha256": "7e64e4fc9d3f60dc7346f4f07e9c87413665b5fe7b513fb20aaa6fffeed8ee1e",
-      "bytes": 8221807,
+      "sha256": "5b4c39f2ef489db8fd281a06189d6ce09d674fc0908ef9dee5f3094ed1023682",
+      "bytes": 8047757,
       "width": 1024,
       "height": 1024,
       "bit_depth": 16,
@@ -103,8 +112,8 @@
     },
     {
       "path": "steel/roughness.png",
-      "sha256": "6022a7005a72ada66723fe5e9b0099ebc778c3b954cb75acd3a66aa43a8d3397",
-      "bytes": 751228,
+      "sha256": "3ecd47371201050c9e997cfcd6d97b755f14bdcb44943ad633ebadeebc5bb94a",
+      "bytes": 761638,
       "width": 1024,
       "height": 1024,
       "bit_depth": 8,
@@ -112,8 +121,8 @@
     },
     {
       "path": "steel/rustMask.png",
-      "sha256": "f559721f2da37de0300c7249b772dc892092bd98eeba7daeaa7897780438dc06",
-      "bytes": 743248,
+      "sha256": "970e5b9846085a554c113343bf308d0c9adca1f222f5f73bc78067a57d66606c",
+      "bytes": 743223,
       "width": 1024,
       "height": 1024,
       "bit_depth": 16,
@@ -129,46 +138,73 @@
       "color_type": 0
     },
     {
+      "path": "uv-checker.png",
+      "sha256": "2416c80e6a25d3fc8e8cabc9d2520ade3ff62209254f717565cbc6169ad40c6e",
+      "bytes": 2202465,
+      "width": 1200,
+      "height": 1200,
+      "bit_depth": 8,
+      "color_type": 6
+    },
+    {
+      "path": "uv-layout.png",
+      "sha256": "fee29383ac3a3138509ff0084b9852817ead8bee7b86c88bf8aec1aaef30d025",
+      "bytes": 66982,
+      "width": 1800,
+      "height": 1380,
+      "bit_depth": 8,
+      "color_type": 2
+    },
+    {
       "path": "wood/bareWoodColor.png",
-      "sha256": "78e05fa844099fa2707aa9d85255aa3b9212df2e4187fac231f96de3a9d7b5e3",
-      "bytes": 1228337,
-      "width": 1024,
-      "height": 1024,
+      "sha256": "57c64398f7e6d144ea8ecfc3b7ac61edae59a5a78fe0074683e5f6782c79dc31",
+      "bytes": 4076828,
+      "width": 2048,
+      "height": 2048,
       "bit_depth": 8,
       "color_type": 2
     },
     {
       "path": "wood/baseColor.png",
-      "sha256": "7e8ded140be9f80f93663e381691cd48f687466b78a6cb87c8bbc422a3bdbf45",
-      "bytes": 1408159,
-      "width": 1024,
-      "height": 1024,
+      "sha256": "4e8e996cb8f2cd3078fab71ac2e0f1d949593bc9f087f7388a0bb1527da355dc",
+      "bytes": 4126439,
+      "width": 2048,
+      "height": 2048,
       "bit_depth": 8,
       "color_type": 2
     },
     {
       "path": "wood/designer-graph.png",
-      "sha256": "793e8b015b456effe5fe8d9cf1ee1d231e3d78b652cff4c29ba29ce6731e62d5",
-      "bytes": 676213,
+      "sha256": "c53d9cb474e22032edbd79acb34e9d84c5057e70ff19c8417aaf4511c4c19713",
+      "bytes": 811570,
       "width": 1568,
       "height": 931,
       "bit_depth": 8,
       "color_type": 6
     },
     {
+      "path": "wood/grainDetail.png",
+      "sha256": "0bd137d8bfd6614611ab3ca8220233b99f614afcd0fe4f573f84d0cfd45b6104",
+      "bytes": 7217200,
+      "width": 2048,
+      "height": 2048,
+      "bit_depth": 16,
+      "color_type": 0
+    },
+    {
       "path": "wood/height.png",
-      "sha256": "2af5be12379cc214cf52de1a33958189f0704785266d8ad7bb764c1d043180ce",
-      "bytes": 1571450,
-      "width": 1024,
-      "height": 1024,
+      "sha256": "5b9359233a3e7476efad54e325a8eaf423935832c67eb27368c80fa4ec318cb2",
+      "bytes": 6229260,
+      "width": 2048,
+      "height": 2048,
       "bit_depth": 16,
       "color_type": 0
     },
     {
       "path": "wood/material.sbs",
-      "sha256": "5a696c29c6aba87be162344135aa2448b22af38be33aead99d3d8f3c5ee6816b",
-      "bytes": 22048,
-      "nodes": 35,
+      "sha256": "a39aa33c57c3a47ae82461c250007e6eeeba1d3482a7c97a8380f1d68428d0af",
+      "bytes": 23123,
+      "nodes": 37,
       "dependencies": [
         "sbs://wood_fibers_1.sbs",
         "sbs://grunge_leaky_paint.sbs",
@@ -179,52 +215,52 @@
     },
     {
       "path": "wood/material.sbsar",
-      "sha256": "0456340129347218fd6e41cc7a28f69f27f3b5cf8ff5d5956b20d1fc742ff24b",
-      "bytes": 9405,
+      "sha256": "3f6f561713313d5f7399966a75f8d0d66b9d0061dda34ce5720625ed90955804",
+      "bytes": 9460,
       "container": "native SBSAR / 7z"
     },
     {
       "path": "wood/metallic.png",
-      "sha256": "1ff3aad65cd2d6b5b1808100e9f61d346f6af2106a93f7929c99dfd6610e88a1",
-      "bytes": 5641,
-      "width": 1024,
-      "height": 1024,
+      "sha256": "1c159153da411c85716da1d82641931b4ba6628dff9f4c496e7b6c718cc267dd",
+      "bytes": 19385,
+      "width": 2048,
+      "height": 2048,
       "bit_depth": 8,
       "color_type": 0
     },
     {
       "path": "wood/normal.png",
-      "sha256": "009133d8a29372a94419549193b5eb89d807184c14b09074c0664acb8fbe0cab",
-      "bytes": 6576144,
-      "width": 1024,
-      "height": 1024,
+      "sha256": "2d6ed2088c33479afa1b034b218833cc9a5837e6bad2261d2fe94fa57de16d6e",
+      "bytes": 27721359,
+      "width": 2048,
+      "height": 2048,
       "bit_depth": 16,
       "color_type": 6
     },
     {
       "path": "wood/paintMask.png",
-      "sha256": "3dc291268a817daa9734df8b99158ae766b8ef5fdabd15abc521a2522e1ded79",
-      "bytes": 600606,
-      "width": 1024,
-      "height": 1024,
+      "sha256": "ea3609db18ab34f714a4ceb6a0b84bf79eedb84d202039113f1194fd07d8841d",
+      "bytes": 1058675,
+      "width": 2048,
+      "height": 2048,
       "bit_depth": 16,
       "color_type": 0
     },
     {
       "path": "wood/roughness.png",
-      "sha256": "fde317cbc8aefa70bfd7344588d474d13cf19faf36b2a37fb36599fff077973f",
-      "bytes": 466292,
-      "width": 1024,
-      "height": 1024,
+      "sha256": "afbd02ec61e5766cb40b059aff9ffad23589c53e852f9ea2ee3764cf08c50932",
+      "bytes": 1185810,
+      "width": 2048,
+      "height": 2048,
       "bit_depth": 8,
       "color_type": 2
     },
     {
       "path": "wood/scratchMask.png",
-      "sha256": "06684f015dd5d651e7d44eae0765762233e367b244514fdce3ffd4afb028878f",
-      "bytes": 167390,
-      "width": 1024,
-      "height": 1024,
+      "sha256": "9d5105c2a92e458fe05da40d087765db5c1d3ca6873fd460c0e1aa0d34f415be",
+      "bytes": 274030,
+      "width": 2048,
+      "height": 2048,
       "bit_depth": 16,
       "color_type": 0
     }

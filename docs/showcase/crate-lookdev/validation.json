@@ -1,214 +1,445 @@
 {
   "blender_version": "5.2.0 LTS",
-  "reopened_and_rendered": true,
-  "nominal_length_m": 2.0,
-  "crate_mesh_count": 119,
-  "uv_mesh_count": 119,
+  "reopened": true,
   "render_engine": "CYCLES",
-  "samples": 96,
+  "samples": 128,
   "resolution": [
     1600,
     1600
   ],
+  "crate_mesh_count": 178,
+  "wood_mesh_count": 83,
+  "uv_mesh_count": 178,
+  "packed_image_count": 13,
   "materials": {
     "SD_PaintedWood": {
       "maps": {
         "baseColor.png": {
           "packed_bytes_match_export": true,
-          "color_space": "sRGB"
+          "color_space": "sRGB",
+          "size": [
+            2048,
+            2048
+          ]
         },
         "roughness.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
         },
         "metallic.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
         },
         "normal.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
         },
         "height.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
         },
         "bareWoodColor.png": {
           "packed_bytes_match_export": true,
-          "color_space": "sRGB"
+          "color_space": "sRGB",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "grainDetail.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
         }
       },
-      "normal_strength": 0.5,
-      "bump_distance_m": 0.004999999888241291,
-      "bump_strength": 0.5199999809265137,
-      "base_color_blend": "Geometry recess mask blends SD painted and bare-wood colors"
+      "bump_nodes": [
+        {
+          "name": "Bump",
+          "strength": 0.6499999761581421,
+          "distance_m": 0.006000000052154064
+        },
+        {
+          "name": "Fine grain relief",
+          "strength": 0.6000000238418579,
+          "distance_m": 0.00139999995008111
+        }
+      ]
     },
     "SD_BareWood": {
       "maps": {
         "bareWoodColor.png": {
           "packed_bytes_match_export": true,
-          "color_space": "sRGB"
+          "color_space": "sRGB",
+          "size": [
+            2048,
+            2048
+          ]
         },
         "roughness.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
         },
         "metallic.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
         },
         "normal.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
         },
         "height.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "grainDetail.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
         }
       },
-      "normal_strength": 0.5,
-      "bump_distance_m": 0.004999999888241291,
-      "bump_strength": 0.5199999809265137
+      "bump_nodes": [
+        {
+          "name": "Bump",
+          "strength": 0.6499999761581421,
+          "distance_m": 0.006000000052154064
+        },
+        {
+          "name": "Fine grain relief",
+          "strength": 0.6000000238418579,
+          "distance_m": 0.00139999995008111
+        }
+      ]
     },
     "SD_RustedSteel": {
       "maps": {
         "baseColor.png": {
           "packed_bytes_match_export": true,
-          "color_space": "sRGB"
+          "color_space": "sRGB",
+          "size": [
+            1024,
+            1024
+          ]
         },
         "roughness.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            1024,
+            1024
+          ]
         },
         "metallic.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            1024,
+            1024
+          ]
         },
         "normal.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            1024,
+            1024
+          ]
         },
         "height.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            1024,
+            1024
+          ]
         }
       },
-      "normal_strength": 0.550000011920929,
-      "bump_distance_m": 0.0012000000569969416,
-      "bump_strength": 0.41999998688697815
+      "bump_nodes": [
+        {
+          "name": "Bump",
+          "strength": 0.25,
+          "distance_m": 0.000699999975040555
+        }
+      ]
     },
     "SD_WornSteel": {
       "maps": {
         "bareSteelColor.png": {
           "packed_bytes_match_export": true,
-          "color_space": "sRGB"
+          "color_space": "sRGB",
+          "size": [
+            1024,
+            1024
+          ]
         },
         "roughness.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            1024,
+            1024
+          ]
         },
         "metallic.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            1024,
+            1024
+          ]
         },
         "normal.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            1024,
+            1024
+          ]
         },
         "height.png": {
           "packed_bytes_match_export": true,
-          "color_space": "Non-Color"
+          "color_space": "Non-Color",
+          "size": [
+            1024,
+            1024
+          ]
         }
       },
-      "normal_strength": 0.550000011920929,
-      "bump_distance_m": 0.0012000000569969416,
-      "bump_strength": 0.41999998688697815
+      "bump_nodes": [
+        {
+          "name": "Bump",
+          "strength": 0.25,
+          "distance_m": 0.000699999975040555
+        }
+      ]
+    },
+    "SD_PaintedWood_Displaced": {
+      "maps": {
+        "baseColor.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "sRGB",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "roughness.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "metallic.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "normal.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "height.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "bareWoodColor.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "sRGB",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "grainDetail.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
+        }
+      },
+      "bump_nodes": [
+        {
+          "name": "Bump",
+          "strength": 0.6499999761581421,
+          "distance_m": 0.006000000052154064
+        },
+        {
+          "name": "Fine grain relief",
+          "strength": 0.6000000238418579,
+          "distance_m": 0.00139999995008111
+        }
+      ]
+    },
+    "SD_BareWood_Displaced": {
+      "maps": {
+        "bareWoodColor.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "sRGB",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "roughness.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "metallic.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "normal.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "height.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
+        },
+        "grainDetail.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color",
+          "size": [
+            2048,
+            2048
+          ]
+        }
+      },
+      "bump_nodes": [
+        {
+          "name": "Bump",
+          "strength": 0.6499999761581421,
+          "distance_m": 0.006000000052154064
+        },
+        {
+          "name": "Fine grain relief",
+          "strength": 0.6000000238418579,
+          "distance_m": 0.00139999995008111
+        }
+      ]
     }
   },
   "crate_bounds_m": [
-    2.052000045776367,
+    2.252000093460083,
     1.5268184542655945,
-    1.2035071067512035
+    1.1375535726547241
   ],
-  "packed_image_count": 12,
-  "sculpted_gouge_depth_m": 0.017,
-  "painted_wood_graph_nodes": 35,
-  "steel_graph_nodes": 32,
+  "attached_fiber_meshes": 59,
+  "fine_grain_uv": {
+    "name": "WoodDetailUV",
+    "tile_width_m": 0.45,
+    "purpose": "Consistent physical density for the SD fine-grain height and roughness modulation",
+    "unique_bake_atlas": false
+  },
+  "displacement": {
+    "scope": [
+      "Wood_Top_Batten_-0.62",
+      "Wood_Top_Batten_0.62"
+    ],
+    "method": "BOTH",
+    "native_height_bit_depth": 16,
+    "scale_m": 0.004,
+    "midlevel": 0.52,
+    "render_subdivision_level": 2
+  },
+  "nominal_length_m": 2.2,
+  "geometry": {
+    "layered_batten_fracture": true,
+    "batten_thickness_m": 0.03,
+    "gouge_depth_m": 0.016,
+    "subdivision_note": "Dense lookdev geometry; not a game-ready retopology"
+  },
+  "ground_contact": {
+    "surface_z_m": -0.005,
+    "support_gaps_m": {
+      "Wood_Upright_-0.62_-0.542": 0.0,
+      "Wood_Upright_-0.62_0.542": 0.0,
+      "Wood_Upright_0.62_-0.542": 0.0,
+      "Wood_Upright_0.62_0.542": 0.0
+    },
+    "minimum_crate_gap_m": 0.0,
+    "base_clearance_m": 0.001,
+    "checked_after_modifiers": true
+  },
   "designer_reopen": {
     "wood": {
-      "reopened": true,
-      "node_count": 35
+      "package_reopened": true,
+      "nodes": 37,
+      "native_recomputed_files": 8
     },
     "steel": {
-      "reopened": true,
-      "node_count": 32
+      "package_reopened": true,
+      "nodes": 35,
+      "native_recomputed_files": 8
     }
   },
-  "designer_recompute_pixel_deltas": {
-    "wood": {
-      "baseColor": {
-        "bit_depth": 8,
-        "max_lsb_delta": 15,
-        "mean_lsb_delta": 6.580352783203125e-05,
-        "changed_fraction": 3.528594970703125e-05
-      },
-      "height": {
-        "bit_depth": 16,
-        "max_lsb_delta": 1940,
-        "mean_lsb_delta": 0.011864662170410156,
-        "changed_fraction": 0.001064300537109375
-      },
-      "normal": {
-        "bit_depth": 16,
-        "max_lsb_delta": 8343,
-        "mean_lsb_delta": 0.04820704460144043,
-        "changed_fraction": 0.0016903877258300781
-      },
-      "roughness": {
-        "bit_depth": 8,
-        "max_lsb_delta": 11,
-        "mean_lsb_delta": 7.82012939453125e-05,
-        "changed_fraction": 3.814697265625e-05
-      },
-      "metallic": {
-        "bit_depth": 8,
-        "max_lsb_delta": 0,
-        "mean_lsb_delta": 0.0,
-        "changed_fraction": 0.0
-      }
-    },
-    "steel": {
-      "baseColor": {
-        "bit_depth": 8,
-        "max_lsb_delta": 1,
-        "mean_lsb_delta": 5.5948893229166664e-05,
-        "changed_fraction": 5.5948893229166664e-05
-      },
-      "height": {
-        "bit_depth": 16,
-        "max_lsb_delta": 52,
-        "mean_lsb_delta": 0.0075130462646484375,
-        "changed_fraction": 0.004192352294921875
-      },
-      "normal": {
-        "bit_depth": 16,
-        "max_lsb_delta": 279,
-        "mean_lsb_delta": 0.0408475399017334,
-        "changed_fraction": 0.007630348205566406
-      },
-      "roughness": {
-        "bit_depth": 8,
-        "max_lsb_delta": 1,
-        "mean_lsb_delta": 6.008148193359375e-05,
-        "changed_fraction": 6.008148193359375e-05
-      },
-      "metallic": {
-        "bit_depth": 8,
-        "max_lsb_delta": 2,
-        "mean_lsb_delta": 0.000152587890625,
-        "changed_fraction": 0.000148773193359375
-      }
-    }
-  },
-  "recompute_note": "Native SD graphs reopen and recompute. Small boundary differences are recorded; byte-identical determinism is not claimed."
+  "recompute_note": "Both saved SBS packages reopen and recompute native textures; byte-identical recompute is not claimed."
 }

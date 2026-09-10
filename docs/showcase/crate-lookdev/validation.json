@@ -1,0 +1,151 @@
+{
+  "blender_version": "5.2.0 LTS",
+  "reopened_and_rendered": true,
+  "nominal_length_m": 2.0,
+  "lid_dimensions_m": [
+    2.0002992153167725,
+    0.19507572054862976,
+    0.07628915458917618
+  ],
+  "crate_mesh_count": 87,
+  "uv_mesh_count": 87,
+  "render_engine": "CYCLES",
+  "samples": 96,
+  "resolution": [
+    1600,
+    1600
+  ],
+  "materials": {
+    "SD_PaintedWood": {
+      "maps": {
+        "baseColor.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "sRGB"
+        },
+        "roughness.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "metallic.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "normal.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "height.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        }
+      },
+      "normal_strength": 0.8500000238418579,
+      "bump_distance_m": 0.004000000189989805,
+      "bump_strength": 0.6000000238418579
+    },
+    "SD_RustedSteel": {
+      "maps": {
+        "baseColor.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "sRGB"
+        },
+        "roughness.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "metallic.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "normal.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "height.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        }
+      },
+      "normal_strength": 0.6499999761581421,
+      "bump_distance_m": 0.001500000013038516,
+      "bump_strength": 0.5
+    }
+  },
+  "designer_reopen": {
+    "wood": {
+      "reopened": true,
+      "node_count": 24
+    },
+    "steel": {
+      "reopened": true,
+      "node_count": 27
+    }
+  },
+  "designer_recompute_pixel_deltas": {
+    "wood": {
+      "baseColor": {
+        "bit_depth": 8,
+        "max_lsb_delta": 1,
+        "mean_lsb_delta": 9.218851725260416e-06,
+        "changed_fraction": 9.218851725260416e-06
+      },
+      "height": {
+        "bit_depth": 16,
+        "max_lsb_delta": 21,
+        "mean_lsb_delta": 0.004353523254394531,
+        "changed_fraction": 0.0033407211303710938
+      },
+      "normal": {
+        "bit_depth": 16,
+        "max_lsb_delta": 31,
+        "mean_lsb_delta": 0.007534980773925781,
+        "changed_fraction": 0.004599571228027344
+      },
+      "roughness": {
+        "bit_depth": 8,
+        "max_lsb_delta": 1,
+        "mean_lsb_delta": 3.337860107421875e-05,
+        "changed_fraction": 3.337860107421875e-05
+      },
+      "metallic": {
+        "bit_depth": 8,
+        "max_lsb_delta": 0,
+        "mean_lsb_delta": 0.0,
+        "changed_fraction": 0.0
+      }
+    },
+    "steel": {
+      "baseColor": {
+        "bit_depth": 8,
+        "max_lsb_delta": 1,
+        "mean_lsb_delta": 1.9391377766927082e-05,
+        "changed_fraction": 1.9391377766927082e-05
+      },
+      "height": {
+        "bit_depth": 16,
+        "max_lsb_delta": 108,
+        "mean_lsb_delta": 0.007159233093261719,
+        "changed_fraction": 0.0021944046020507812
+      },
+      "normal": {
+        "bit_depth": 16,
+        "max_lsb_delta": 183,
+        "mean_lsb_delta": 0.0157623291015625,
+        "changed_fraction": 0.0036733150482177734
+      },
+      "roughness": {
+        "bit_depth": 8,
+        "max_lsb_delta": 1,
+        "mean_lsb_delta": 5.91278076171875e-05,
+        "changed_fraction": 5.91278076171875e-05
+      },
+      "metallic": {
+        "bit_depth": 8,
+        "max_lsb_delta": 2,
+        "mean_lsb_delta": 0.00014400482177734375,
+        "changed_fraction": 0.0001430511474609375
+      }
+    }
+  },
+  "recompute_note": "Reopened SD graphs recompute successfully. Pixel values can vary slightly; this is not byte-identical determinism."
+}

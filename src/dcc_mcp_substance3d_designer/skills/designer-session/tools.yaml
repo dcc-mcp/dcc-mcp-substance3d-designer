@@ -1,4 +1,22 @@
 tools:
+  - name: select_graph
+    description: Open an explicit graph from an already loaded package in the editor.
+    source_file: scripts/select_graph.py
+    read_only: false
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    annotations: {read_only_hint: false, destructive_hint: false, idempotent_hint: true}
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [package_path, graph_id]
+      properties:
+        package_path: {type: string, minLength: 1}
+        graph_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+    output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}
   - name: export_graph_state
     description: Export typed nodes, parameters, topology, and output usages from the active Designer graph without modifying it.
     input_schema:
@@ -30,7 +48,7 @@ tools:
       destructive_hint: false
       idempotent_hint: true
   - name: create_node
-    description: "Create one typed built-in sbs:: node in the active Designer graph."
+    description: "Create one built-in sbs:: node. Always use the returned native node_id; requested IDs may be read-only in Designer."
     input_schema:
       type: object
       additionalProperties: false
@@ -98,9 +116,9 @@ tools:
       additionalProperties: false
       required: [source_node, source_property, target_node, target_property]
       properties:
-        source_node: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+        source_node: {type: string, pattern: '^[A-Za-z0-9_]+$', maxLength: 128}
         source_property: {type: string, pattern: '^[$]?[A-Za-z][A-Za-z0-9_.-]*$', maxLength: 128}
-        target_node: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+        target_node: {type: string, pattern: '^[A-Za-z0-9_]+$', maxLength: 128}
         target_property: {type: string, pattern: '^[$]?[A-Za-z][A-Za-z0-9_.-]*$', maxLength: 128}
     read_only: false
     destructive: false
@@ -118,7 +136,7 @@ tools:
       additionalProperties: false
       required: [node_id]
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+        node_id: {type: string, pattern: '^[A-Za-z0-9_]+$', maxLength: 128}
     read_only: false
     destructive: true
     idempotent: false
@@ -135,7 +153,7 @@ tools:
       additionalProperties: false
       required: [node_id, position]
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+        node_id: {type: string, pattern: '^[A-Za-z0-9_]+$', maxLength: 128}
         position:
           type: array
           minItems: 2
@@ -157,9 +175,9 @@ tools:
       additionalProperties: false
       required: [node_id, parameter, value_type, value]
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+        node_id: {type: string, pattern: '^[A-Za-z0-9_]+$', maxLength: 128}
         parameter: {type: string, pattern: '^[$]?[A-Za-z][A-Za-z0-9_.-]*$', maxLength: 128}
-        value_type: {type: string, enum: [bool, int, float, string, int2, float2, float3, float4]}
+        value_type: {type: string, enum: [bool, int, float, string, int2, float2, float3, float4, colorrgba]}
         value:
           anyOf:
             - {type: boolean}
@@ -186,7 +204,7 @@ tools:
       additionalProperties: false
       required: [node_id, parameter]
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+        node_id: {type: string, pattern: '^[A-Za-z0-9_]+$', maxLength: 128}
         parameter: {type: string, pattern: '^[$]?[A-Za-z][A-Za-z0-9_.-]*$', maxLength: 128}
     read_only: true
     destructive: false
@@ -204,7 +222,7 @@ tools:
       additionalProperties: false
       required: [node_id, parameter, exposed_id]
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+        node_id: {type: string, pattern: '^[A-Za-z0-9_]+$', maxLength: 128}
         parameter: {type: string, pattern: '^[$]?[A-Za-z][A-Za-z0-9_.-]*$', maxLength: 128}
         exposed_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
     read_only: false
@@ -245,8 +263,8 @@ tools:
       additionalProperties: false
       required: [node_id, usage, channels, color_space]
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
-        usage: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+        node_id: {type: string, pattern: '^[A-Za-z0-9_]+$', maxLength: 128}
+        usage: {type: string, pattern: '^[A-Za-z0-9_]+$', maxLength: 128}
         channels: {type: string, enum: [L, RGB, RGBA]}
         color_space: {type: string, minLength: 1, maxLength: 128}
     read_only: false
@@ -552,3 +570,54 @@ tools:
         - designer_session__list_packages
       on-failure:
         - designer_session__inspect_session
+  - name: create_resource_node
+    description: Instance a shipped Designer resource package in the active graph, returning its input and output identifiers.
+    source_file: scripts/create_resource_node.py
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    read_only: false
+    destructive: false
+    idempotent: false
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [package_name, resource_id, node_id]
+      properties:
+        package_name: {type: string, maxLength: 132, pattern: '^[A-Za-z0-9_-]+[.]sbs$'}
+        resource_id: {type: string, maxLength: 128, pattern: '^[A-Za-z][A-Za-z0-9_]*$'}
+        node_id: {type: string, maxLength: 128, pattern: '^[A-Za-z][A-Za-z0-9_]*$'}
+  - name: render_graph_maps
+    description: Compute up to eight explicit textures with Designer's native engine and write PNG files into a new directory. Sets graph resolution; existing directories are rejected.
+    source_file: scripts/render_graph_maps.py
+    read_only: false
+    destructive: false
+    idempotent: false
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 120
+    annotations: {read_only_hint: false, destructive_hint: false, idempotent_hint: false}
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [output_dir, outputs]
+      properties:
+        output_dir: {type: string, minLength: 1}
+        resolution: {type: integer, enum: [256, 512, 1024, 2048], default: 1024}
+        outputs:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, node_id, property]
+            properties:
+              name: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+              node_id: {type: string, pattern: '^[A-Za-z0-9_]+$', maxLength: 128}
+              property: {type: string, pattern: '^[$]?[A-Za-z][A-Za-z0-9_.-]*$', maxLength: 128}
+    output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}

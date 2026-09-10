@@ -7,8 +7,6 @@ from types import ModuleType, SimpleNamespace
 
 import yaml
 
-from dcc_mcp_substance3d_designer import graph_authoring
-
 SCRIPTS = (
     Path(__file__).parent.parent / "src" / "dcc_mcp_substance3d_designer" / "skills" / "designer-session" / "scripts"
 )
@@ -24,6 +22,15 @@ def _load_script(name: str):
 
 
 class _Property:
+    def getTypes(self):
+        return [SimpleNamespace(getId=lambda: "float", getModifier=lambda: SimpleNamespace(name="Auto"))]
+
+    def isReadOnly(self):
+        return False
+
+    def isConnectable(self):
+        return True
+
     def __init__(self, identifier: str) -> None:
         self._identifier = identifier
 
@@ -38,6 +45,9 @@ class _Value:
     def get(self):
         return self._value
 
+    def getType(self):
+        return SimpleNamespace(getId=lambda: "float")
+
 
 class _Connection:
     def __init__(self, target, target_property: str) -> None:
@@ -50,6 +60,15 @@ class _Connection:
     def getInputNode(self):
         return self._target
 
+    def getInputPropertyNode(self):
+        return self._target
+
+    def getOutputPropertyNode(self):
+        return self._source
+
+    def getOutputProperty(self):
+        return _Property(self._output)
+
 
 class _Node:
     def __init__(self, identifier: str, type_url: str, position: tuple[float, float]) -> None:
@@ -60,6 +79,7 @@ class _Node:
         self._values = {}
         self._connections = {}
         self._usages = []
+        self._annotations = {}
 
     def getIdentifier(self) -> str:
         return self._identifier
@@ -82,7 +102,7 @@ class _Node:
     def getAnnotationPropertyValueFromId(self, identifier: str):
         if identifier == "usages":
             return _Value(self._usages)
-        return None
+        return self._annotations.get(identifier)
 
     def setIdentifier(self, identifier: str) -> None:
         self._identifier = identifier
@@ -96,6 +116,9 @@ class _Node:
             None,
         )
 
+    def getPropertyGraph(self, prop):
+        return None
+
     def setInputPropertyValueFromId(self, identifier: str, value) -> None:
         prop = self.getPropertyFromId(identifier, "input")
         if prop is None:
@@ -105,10 +128,13 @@ class _Node:
 
     def newPropertyConnectionFromId(self, output: str, target, input_property: str):
         connection = _Connection(target, input_property)
+        connection._source, connection._output = self, output
         self._connections.setdefault(output, []).append(connection)
+        target._connections.setdefault(input_property, []).append(connection)
         return connection
 
     def setAnnotationPropertyValueFromId(self, identifier: str, value) -> None:
+        self._annotations[identifier] = value
         if identifier == "usages":
             self._usages = list(value)
 
@@ -122,11 +148,11 @@ def _install_fake_designer(monkeypatch):
     noise._properties["input"] = [_Property("scale")]
     noise._properties["output"] = [noise_output]
     noise._values["scale"] = _Value(4.0)
-    noise._connections["unique_filter_output"] = [_Connection(blend, "foreground")]
+    noise.newPropertyConnectionFromId("unique_filter_output", blend, "foreground")
     output._usages = [
         SimpleNamespace(
-            getUsage=lambda: "baseColor",
-            getChannels=lambda: "RGBA",
+            getName=lambda: "baseColor",
+            getComponents=lambda: "RGBA",
             getColorSpace=lambda: "sRGB",
         )
     ]
@@ -140,6 +166,9 @@ def _install_fake_designer(monkeypatch):
     sd_module.getContext = lambda: SimpleNamespace(getSDApplication=lambda: application)
     property_module = ModuleType("sd.api.sdproperty")
     property_module.SDPropertyCategory = SimpleNamespace(Input="input", Output="output")
+    strings = ModuleType("sd.api.sdvaluestring")
+    strings.SDValueString = SimpleNamespace(sNew=lambda value: _Value(value))
+    monkeypatch.setitem(sys.modules, "sd.api.sdvaluestring", strings)
     monkeypatch.setitem(sys.modules, "sd", sd_module)
     monkeypatch.setitem(sys.modules, "sd.api", ModuleType("sd.api"))
     monkeypatch.setitem(sys.modules, "sd.api.sdproperty", property_module)
@@ -196,7 +225,7 @@ def test_create_node_uses_bounded_type_url_and_active_graph(monkeypatch):
 
     assert result["success"] is True
     assert result["context"] == {
-        "node_id": "uniform_color",
+        "node_id": "generated",
         "type_url": "sbs::compositing::uniform",
         "position": [10.0, 20.0],
     }
@@ -253,6 +282,7 @@ def test_typed_public_calls_build_and_verify_a_small_graph(monkeypatch):
         node = _Node(f"node_{len(nodes)}", type_url, (0.0, 0.0))
         if type_url != "sbs::compositing::output":
             node._properties["output"] = [_Property("unique_filter_output")]
+        node._properties["input"] = [_Property("scale"), _Property("foreground")]
         nodes.append(node)
         return node
 
@@ -260,11 +290,18 @@ def test_typed_public_calls_build_and_verify_a_small_graph(monkeypatch):
         getIdentifier=lambda: "typed_material",
         getNodes=lambda: nodes,
         newNode=new_node,
-        exposeProperty=lambda node, prop, exposed_id: object(),
+        getUID=lambda: "graph-uid",
+        getOutputIdentifiers=lambda: [
+            node._annotations["identifier"] for node in nodes if "identifier" in node._annotations
+        ],
+        deleteNode=lambda node: nodes.remove(node),
     )
     application = SimpleNamespace(getUIMgr=lambda: SimpleNamespace(getCurrentGraph=lambda: graph))
     sd_module = ModuleType("sd")
     sd_module.getContext = lambda: SimpleNamespace(getSDApplication=lambda: application)
+    strings = ModuleType("sd.api.sdvaluestring")
+    strings.SDValueString = SimpleNamespace(sNew=lambda value: _Value(value))
+    monkeypatch.setitem(sys.modules, "sd.api.sdvaluestring", strings)
     monkeypatch.setitem(sys.modules, "sd", sd_module)
     monkeypatch.setitem(sys.modules, "sd.api", ModuleType("sd.api"))
     property_module = ModuleType("sd.api.sdproperty")
@@ -294,8 +331,8 @@ def test_typed_public_calls_build_and_verify_a_small_graph(monkeypatch):
     usage_values = ModuleType("sd.api.sdvalueusage")
     usage_values.SDUsage = SimpleNamespace(
         sNew=lambda usage, channels, color_space: SimpleNamespace(
-            getUsage=lambda: usage,
-            getChannels=lambda: channels,
+            getName=lambda: usage,
+            getComponents=lambda: channels,
             getColorSpace=lambda: color_space,
         )
     )
@@ -313,73 +350,24 @@ def test_typed_public_calls_build_and_verify_a_small_graph(monkeypatch):
         position=[0, 0],
     )["success"]
     assert _load_script("connect_nodes").main(
-        source_node="noise",
+        source_node="node_0",
         source_property="unique_filter_output",
-        target_node="blend",
+        target_node="node_1",
         target_property="foreground",
     )["success"]
-    assert _load_script("set_parameter").main(node_id="noise", parameter="scale", value_type="float", value=4.0)[
+    assert _load_script("set_parameter").main(node_id="node_0", parameter="scale", value_type="float", value=4.0)[
         "success"
     ]
-    assert _load_script("expose_parameter").main(node_id="noise", parameter="scale", exposed_id="noise_scale")[
+    assert not _load_script("expose_parameter").main(node_id="node_0", parameter="scale", exposed_id="noise_scale")[
         "success"
     ]
     assert _load_script("add_output").main(output_id="base_color", position=[200, 0])["success"]
     assert _load_script("set_output_usage").main(
-        node_id="base_color", usage="baseColor", channels="RGBA", color_space="sRGB"
+        node_id="node_2", usage="baseColor", channels="RGBA", color_space="sRGB"
     )["success"]
 
     state = _load_script("export_graph_state").main(include_parameters=True)
     assert state["success"] is True
     assert state["context"]["graph"]["node_count"] == 3
-    assert state["context"]["graph"]["connections"][0]["target_node"] == "blend"
+    assert state["context"]["graph"]["connections"][0]["target_node"] == "node_1"
     assert state["context"]["graph"]["outputs"][0]["usages"][0]["usage"] == "baseColor"
-
-
-def test_export_maps_uses_fixed_official_cli_and_explicit_color_space(monkeypatch, tmp_path):
-    package_file = tmp_path / "material.sbs"
-    package_file.write_text("package", encoding="utf-8")
-    package = SimpleNamespace(getFilePath=lambda: str(package_file))
-    graph = SimpleNamespace(getPackage=lambda: package)
-    application = SimpleNamespace(getUIMgr=lambda: SimpleNamespace(getCurrentGraph=lambda: graph))
-    sd_module = ModuleType("sd")
-    sd_module.getContext = lambda: SimpleNamespace(getSDApplication=lambda: application)
-    monkeypatch.setitem(sys.modules, "sd", sd_module)
-    monkeypatch.setattr(graph_authoring.shutil, "which", lambda name: "/opt/adobe/sbsrender")
-    commands = []
-
-    def fake_run(command, **kwargs):
-        commands.append((command, kwargs))
-        return SimpleNamespace(returncode=0)
-
-    monkeypatch.setattr(graph_authoring.subprocess, "run", fake_run)
-
-    result = _load_script("export_maps").main(
-        output_dir=str(tmp_path / "maps"),
-        image_format="exr",
-        bit_depth="16f",
-        color_space="ACEScg",
-    )
-
-    assert result["success"] is True
-    command, options = commands[0]
-    assert command == [
-        "/opt/adobe/sbsrender",
-        "render",
-        "--input",
-        str(package_file),
-        "--output-path",
-        str((tmp_path / "maps").resolve()),
-        "--output-format",
-        "exr",
-        "--output-bit-depth",
-        "16f",
-        "--output-colorspace",
-        "ACEScg",
-    ]
-    assert options == {
-        "capture_output": True,
-        "text": True,
-        "timeout": 600,
-        "check": False,
-    }

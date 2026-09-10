@@ -79,10 +79,11 @@ def _usage_state(node: Any) -> list[dict[str, str]]:
         return []
     usages = []
     for usage in _sequence(annotation("usages")):
+        usage = _value(usage, "get") or usage
         usages.append(
             {
-                "usage": str(_value(usage, "getUsage") or ""),
-                "channels": str(_value(usage, "getChannels") or ""),
+                "usage": str(_value(usage, "getName", "getUsage") or ""),
+                "channels": str(_value(usage, "getComponents", "getChannels") or ""),
                 "color_space": str(_value(usage, "getColorSpace") or ""),
             }
         )
@@ -100,6 +101,8 @@ def _export_graph_state(include_parameters: bool):
         return skill_error("No active Designer graph", "NO_ACTIVE_GRAPH")
 
     nodes = _sequence(_value(graph, "getNodes"))
+    if len(nodes) > 1000:
+        return skill_error("Use paginated node inspection for graphs over 1000 nodes", "GRAPH_STATE_LIMIT")
     node_states = []
     connections = []
     graph_outputs = []
@@ -148,6 +151,7 @@ def _export_graph_state(include_parameters: bool):
     return skill_success(
         "Exported active Designer graph state",
         graph={
+            "graph_uid": str(_value(graph, "getUID") or ""),
             "identifier": str(_value(graph, "getIdentifier", "getName") or "unknown"),
             "node_count": len(nodes),
             "nodes": node_states,

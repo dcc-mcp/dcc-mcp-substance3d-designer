@@ -9,7 +9,20 @@ from dcc_mcp_substance3d_designer.skill_support import typed_result
 
 
 @skill_entry
-def main(source_node: str, source_property: str, target_node: str, target_property: str, **_kwargs):
+def main(
+    source_node: str,
+    source_property: str,
+    target_node: str,
+    target_property: str,
+    expected_graph_uid: str | None = None,
+    **_kwargs,
+):
     return typed_result(
-        "Connected Designer graph nodes", connect_nodes, source_node, source_property, target_node, target_property
+        "Connected Designer graph nodes",
+        connect_nodes,
+        source_node,
+        source_property,
+        target_node,
+        target_property,
+        expected_graph_uid,
     )

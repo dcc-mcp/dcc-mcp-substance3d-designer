@@ -139,3 +139,8 @@ Before accepting a result, reopen the saved `.sbs` and `.spp`, inspect graph
 connections and layer channels, verify the exported maps, and compare actual host
 renders under matched lighting, camera and scale. File existence and mocked SDK
 tests do not verify the visual result. Use a fresh output directory per iteration.
+
+See the [reference-material capability matrix](docs/reference-material-capabilities.md)
+for node inspection, connection guards, resource instancing, persistence/export
+contracts and remaining live-host validation. Parameter exposure currently returns
+`EXPOSE_API_UNAVAILABLE`; editable node parameters remain available.

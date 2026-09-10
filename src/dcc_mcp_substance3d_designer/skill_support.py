@@ -14,6 +14,17 @@ def typed_result(message: str, operation: Callable[..., dict[str, Any]], *args: 
         context = operation(*args, **kwargs)
     except GraphAuthoringError as exc:
         return skill_error(str(exc), exc.code)
-    except Exception as exc:  # Host SDK errors are intentionally redacted.
-        return skill_error("Designer API operation failed", type(exc).__name__)
+    except BaseException as exc:
+        # Adobe's APIException inherits BaseException, not Exception. Keep
+        # KeyboardInterrupt/SystemExit and unrelated BaseExceptions observable.
+        try:
+            from sd.api.apiexception import APIException
+        except ImportError:
+            APIException = ()
+        if isinstance(exc, APIException):
+            code = getattr(getattr(exc, "mErrorCode", None), "name", "Unknown")
+            return skill_error("Designer SDK operation failed", f"SDK_API_ERROR:{code}")
+        if isinstance(exc, Exception):
+            return skill_error("Designer API operation failed", type(exc).__name__)
+        raise
     return skill_success(message, **context)

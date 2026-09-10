@@ -30,20 +30,21 @@ tools:
       destructive_hint: false
       idempotent_hint: true
   - name: create_node
-    description: "Create one typed built-in sbs:: node in the active Designer graph."
+    description: Create a built-in node. node_id is a display label; returned node_id is the native SDK identity.
     input_schema:
       type: object
       additionalProperties: false
-      required: [type_url]
+      required:
+      - type_url
       properties:
         type_url:
           type: string
           maxLength: 160
-          pattern: '^sbs::[A-Za-z0-9_.-]+(?:::[A-Za-z0-9_.-]+)+$'
+          pattern: ^sbs(?:::[A-Za-z0-9_.-]+)+$
         node_id:
           type: string
           maxLength: 128
-          pattern: '^[A-Za-z][A-Za-z0-9_]*$'
+          pattern: ^[A-Za-z][A-Za-z0-9_]*$
         position:
           type: array
           minItems: 2
@@ -54,7 +55,9 @@ tools:
             maximum: 1000000
     output_schema:
       type: object
-      required: [success, message]
+      required:
+      - success
+      - message
       properties:
         success:
           type: boolean
@@ -96,12 +99,32 @@ tools:
     input_schema:
       type: object
       additionalProperties: false
-      required: [source_node, source_property, target_node, target_property]
+      required:
+      - source_node
+      - source_property
+      - target_node
+      - target_property
       properties:
-        source_node: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
-        source_property: {type: string, pattern: '^[$]?[A-Za-z][A-Za-z0-9_.-]*$', maxLength: 128}
-        target_node: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
-        target_property: {type: string, pattern: '^[$]?[A-Za-z][A-Za-z0-9_.-]*$', maxLength: 128}
+        source_node:
+          type: string
+          pattern: ^[A-Za-z0-9_-]+$
+          maxLength: 128
+        source_property:
+          type: string
+          pattern: ^[$]?[A-Za-z][A-Za-z0-9_.-]*$
+          maxLength: 128
+        target_node:
+          type: string
+          pattern: ^[A-Za-z0-9_-]+$
+          maxLength: 128
+        target_property:
+          type: string
+          pattern: ^[$]?[A-Za-z][A-Za-z0-9_.-]*$
+          maxLength: 128
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
     read_only: false
     destructive: false
     idempotent: false
@@ -109,16 +132,38 @@ tools:
     affinity: main
     timeout_hint_secs: 30
     source_file: scripts/connect_nodes.py
-    output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}
-    annotations: {read_only_hint: false, destructive_hint: false, idempotent_hint: false}
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
   - name: delete_node
     description: Delete one identified node and its attached connections from the active graph.
     input_schema:
       type: object
       additionalProperties: false
-      required: [node_id]
+      required:
+      - node_id
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+        node_id:
+          type: string
+          pattern: ^[A-Za-z0-9_-]+$
+          maxLength: 128
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
     read_only: false
     destructive: true
     idempotent: false
@@ -126,21 +171,43 @@ tools:
     affinity: main
     timeout_hint_secs: 30
     source_file: scripts/delete_node.py
-    output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}
-    annotations: {read_only_hint: false, destructive_hint: true, idempotent_hint: false}
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: false
   - name: set_node_position
     description: Set the canvas position of one identified node.
     input_schema:
       type: object
       additionalProperties: false
-      required: [node_id, position]
+      required:
+      - node_id
+      - position
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+        node_id:
+          type: string
+          pattern: ^[A-Za-z0-9_-]+$
+          maxLength: 128
         position:
           type: array
           minItems: 2
           maxItems: 2
-          items: {type: number, minimum: -1000000, maximum: 1000000}
+          items:
+            type: number
+            minimum: -1000000
+            maximum: 1000000
     read_only: false
     destructive: false
     idempotent: true
@@ -148,28 +215,70 @@ tools:
     affinity: main
     timeout_hint_secs: 30
     source_file: scripts/set_node_position.py
-    output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}
-    annotations: {read_only_hint: false, destructive_hint: false, idempotent_hint: true}
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
   - name: set_parameter
     description: Set one explicit node input with an allowlisted Designer value type.
     input_schema:
       type: object
       additionalProperties: false
-      required: [node_id, parameter, value_type, value]
+      required:
+      - node_id
+      - parameter
+      - value_type
+      - value
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
-        parameter: {type: string, pattern: '^[$]?[A-Za-z][A-Za-z0-9_.-]*$', maxLength: 128}
-        value_type: {type: string, enum: [bool, int, float, string, int2, float2, float3, float4]}
+        node_id:
+          type: string
+          pattern: ^[A-Za-z0-9_-]+$
+          maxLength: 128
+        parameter:
+          type: string
+          pattern: ^[$]?[A-Za-z][A-Za-z0-9_.-]*$
+          maxLength: 128
+        value_type:
+          type: string
+          enum:
+          - bool
+          - int
+          - float
+          - string
+          - int2
+          - float2
+          - float3
+          - float4
         value:
           anyOf:
-            - {type: boolean}
-            - {type: integer}
-            - {type: number}
-            - {type: string, maxLength: 4096}
-            - type: array
-              minItems: 2
-              maxItems: 4
-              items: {type: number, minimum: -1000000, maximum: 1000000}
+          - type: boolean
+          - type: integer
+          - type: number
+          - type: string
+            maxLength: 4096
+          - type: array
+            minItems: 2
+            maxItems: 4
+            items:
+              type: number
+              minimum: -1000000
+              maximum: 1000000
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
     read_only: false
     destructive: false
     idempotent: true
@@ -177,17 +286,39 @@ tools:
     affinity: main
     timeout_hint_secs: 30
     source_file: scripts/set_parameter.py
-    output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}
-    annotations: {read_only_hint: false, destructive_hint: false, idempotent_hint: true}
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
   - name: get_parameter
     description: Read one explicit input parameter from an identified node.
     input_schema:
       type: object
       additionalProperties: false
-      required: [node_id, parameter]
+      required:
+      - node_id
+      - parameter
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
-        parameter: {type: string, pattern: '^[$]?[A-Za-z][A-Za-z0-9_.-]*$', maxLength: 128}
+        node_id:
+          type: string
+          pattern: ^[A-Za-z0-9_-]+$
+          maxLength: 128
+        parameter:
+          type: string
+          pattern: ^[$]?[A-Za-z][A-Za-z0-9_.-]*$
+          maxLength: 128
     read_only: true
     destructive: false
     idempotent: true
@@ -195,18 +326,44 @@ tools:
     affinity: main
     timeout_hint_secs: 30
     source_file: scripts/get_parameter.py
-    output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}
-    annotations: {read_only_hint: true, destructive_hint: false, idempotent_hint: true}
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
   - name: expose_parameter
-    description: Bind one node input to a named graph input when the host exposes the supported binding API.
+    description: Parameter exposure is not yet implemented for the public SDK; returns EXPOSE_API_UNAVAILABLE.
     input_schema:
       type: object
       additionalProperties: false
-      required: [node_id, parameter, exposed_id]
+      required:
+      - node_id
+      - parameter
+      - exposed_id
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
-        parameter: {type: string, pattern: '^[$]?[A-Za-z][A-Za-z0-9_.-]*$', maxLength: 128}
-        exposed_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
+        node_id:
+          type: string
+          pattern: ^[A-Za-z0-9_-]+$
+          maxLength: 128
+        parameter:
+          type: string
+          pattern: ^[$]?[A-Za-z][A-Za-z0-9_.-]*$
+          maxLength: 128
+        exposed_id:
+          type: string
+          pattern: ^[A-Za-z][A-Za-z0-9_]*$
+          maxLength: 128
     read_only: false
     destructive: false
     idempotent: false
@@ -214,8 +371,22 @@ tools:
     affinity: main
     timeout_hint_secs: 30
     source_file: scripts/expose_parameter.py
-    output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}
-    annotations: {read_only_hint: false, destructive_hint: false, idempotent_hint: false}
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
   - name: add_output
     description: Add one named output node to the active Designer graph.
     input_schema:
@@ -243,12 +414,30 @@ tools:
     input_schema:
       type: object
       additionalProperties: false
-      required: [node_id, usage, channels, color_space]
+      required:
+      - node_id
+      - usage
+      - channels
+      - color_space
       properties:
-        node_id: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
-        usage: {type: string, pattern: '^[A-Za-z][A-Za-z0-9_]*$', maxLength: 128}
-        channels: {type: string, enum: [L, RGB, RGBA]}
-        color_space: {type: string, minLength: 1, maxLength: 128}
+        node_id:
+          type: string
+          pattern: ^[A-Za-z0-9_-]+$
+          maxLength: 128
+        usage:
+          type: string
+          pattern: ^[A-Za-z][A-Za-z0-9_]*$
+          maxLength: 128
+        channels:
+          type: string
+          enum:
+          - L
+          - RGB
+          - RGBA
+        color_space:
+          type: string
+          minLength: 1
+          maxLength: 128
     read_only: false
     destructive: false
     idempotent: true
@@ -256,8 +445,22 @@ tools:
     affinity: main
     timeout_hint_secs: 30
     source_file: scripts/set_output_usage.py
-    output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}
-    annotations: {read_only_hint: false, destructive_hint: false, idempotent_hint: true}
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
   - name: new_package
     description: Create a new unsaved Designer user package.
     input_schema: {type: object, additionalProperties: false, properties: {}}
@@ -348,16 +551,48 @@ tools:
     output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}
     annotations: {read_only_hint: false, destructive_hint: false, idempotent_hint: false}
   - name: export_maps
-    description: Render graph maps through the official sbsrender executable with explicit format, bit depth, and color space.
+    description: Compile the active graph package to SBSAR and render only that graph into a fresh run directory; verify every
+      expected output and return hashes.
     input_schema:
       type: object
       additionalProperties: false
-      required: [output_dir]
+      required:
+      - output_dir
       properties:
-        output_dir: {type: string, minLength: 1, maxLength: 4096}
-        image_format: {type: string, enum: [png, tga, tiff, exr], default: png}
-        bit_depth: {type: string, enum: ['8', '16', 16f, 32f], default: '8'}
-        color_space: {type: string, minLength: 1, maxLength: 128, default: Raw}
+        output_dir:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        image_format:
+          type: string
+          enum:
+          - png
+          - tga
+          - tiff
+          - exr
+          default: png
+        bit_depth:
+          type: string
+          enum:
+          - '8'
+          - '16'
+          - 16f
+          - 32f
+          default: '8'
+        color_space:
+          type: string
+          minLength: 1
+          maxLength: 128
+          default: Raw
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
+        output_color_spaces:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 128
     read_only: false
     destructive: true
     idempotent: true
@@ -365,8 +600,22 @@ tools:
     affinity: main
     timeout_hint_secs: 600
     source_file: scripts/export_maps.py
-    output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}
-    annotations: {read_only_hint: false, destructive_hint: true, idempotent_hint: true}
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: true
   - name: export_sbsar
     description: Publish the active package with Designer's official SBSAR exporter and verify the artifact.
     input_schema:
@@ -552,3 +801,474 @@ tools:
         - designer_session__list_packages
       on-failure:
         - designer_session__inspect_session
+  - name: list_nodes
+    description: Enumerate native node identities and labels in the active graph.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        offset:
+          type: integer
+          minimum: 0
+          default: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 100
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/list_nodes.py
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+  - name: list_node_types
+    description: Discover actual node definitions supported by the active graph.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          maxLength: 128
+          default: ''
+        offset:
+          type: integer
+          minimum: 0
+          default: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 100
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/list_node_types.py
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+  - name: describe_node
+    description: Describe input/output types, direction, defaults, and editability of one native node.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        node_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9_-]+$
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
+      required:
+      - node_id
+      - expected_graph_uid
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/describe_node.py
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+  - name: describe_node_type
+    description: Describe properties of a discovered node definition without creating a node.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        type_id:
+          type: string
+          maxLength: 160
+      required:
+      - type_id
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/describe_node_type.py
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+  - name: validate_connection
+    description: Check exact ports, supported type intersection, occupancy, and cycles without mutation.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        source_node:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9_-]+$
+        source_property:
+          type: string
+          minLength: 1
+          maxLength: 128
+        target_node:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9_-]+$
+        target_property:
+          type: string
+          minLength: 1
+          maxLength: 128
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
+      required:
+      - source_node
+      - source_property
+      - target_node
+      - target_property
+      - expected_graph_uid
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/validate_connection.py
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+  - name: disconnect_nodes
+    description: Disconnect one exact edge and verify removal, preserving other connections.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        source_node:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9_-]+$
+        source_property:
+          type: string
+          minLength: 1
+          maxLength: 128
+        target_node:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: ^[A-Za-z0-9_-]+$
+        target_property:
+          type: string
+          minLength: 1
+          maxLength: 128
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
+      required:
+      - source_node
+      - source_property
+      - target_node
+      - target_property
+      - expected_graph_uid
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: true
+    idempotent: true
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/disconnect_nodes.py
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: true
+  - name: list_resources
+    description: List resources and embed state in an explicitly selected open package.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        package_path:
+          type: string
+        offset:
+          type: integer
+          minimum: 0
+          default: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 100
+      required:
+      - package_path
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/list_resources.py
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+  - name: select_graph
+    description: Open a package graph in the editor and verify its active graph identity.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        package_path:
+          type: string
+        resource_url:
+          type: string
+          maxLength: 1024
+      required:
+      - package_path
+      - resource_url
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/select_graph.py
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+  - name: create_subgraph
+    description: Create an empty reusable graph in the active graph package, without changing selection.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        graph_id:
+          type: string
+          minLength: 1
+          maxLength: 128
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
+      required:
+      - graph_id
+      - expected_graph_uid
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/create_subgraph.py
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+  - name: instance_resource
+    description: Instance a resource from an open package; reject direct and indirect graph recursion.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        package_path:
+          type: string
+        resource_url:
+          type: string
+          maxLength: 1024
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
+      required:
+      - package_path
+      - resource_url
+      - expected_graph_uid
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/instance_resource.py
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+  - name: evaluate_graph
+    description: Compute a graph within the node budget and inspect every output texture. SDK compute is synchronous and cannot
+      be cancelled.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
+        max_nodes:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 1000
+      required:
+      - expected_graph_uid
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    execution: async
+    affinity: main
+    timeout_hint_secs: 120
+    source_file: scripts/evaluate_graph.py
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false

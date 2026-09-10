@@ -9,5 +9,22 @@ from dcc_mcp_substance3d_designer.skill_support import typed_result
 
 
 @skill_entry
-def main(output_dir: str, image_format: str = "png", bit_depth: str = "8", color_space: str = "Raw", **_kwargs):
-    return typed_result("Exported Designer graph maps", export_maps, output_dir, image_format, bit_depth, color_space)
+def main(
+    output_dir: str,
+    image_format: str = "png",
+    bit_depth: str = "8",
+    color_space: str = "Raw",
+    expected_graph_uid: str | None = None,
+    output_color_spaces: dict[str, str] | None = None,
+    **_kwargs,
+):
+    return typed_result(
+        "Exported Designer graph maps",
+        export_maps,
+        output_dir,
+        image_format,
+        bit_depth,
+        color_space,
+        expected_graph_uid,
+        output_color_spaces,
+    )

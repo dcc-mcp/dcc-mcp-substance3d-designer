@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.7.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.6.1...v0.7.0) (2026-09-10)
+
+
+### Features
+
+* add editable material workflow and Designer showcase ([#30](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/30)) ([3b4c1fc](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/3b4c1fc18e9651f2a796740028f8812eff420904))
+* expose native graph view inspection ([#36](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/36)) ([d2af5c2](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/d2af5c221d4b7cb99e361411dc3d2eb45b1384f6))
+* support separate PBR maps and embedded resources ([d7e6ee4](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/d7e6ee4a6b5daeaada352fcfd0a87daa9325365b))
+
+
+### Bug Fixes
+
+* detect embedded Python from Windows SDK DLLs ([62d561d](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/62d561de7c4d04b504bd53befa6f9cfa247208f7))
+* handle Designer texture connection semantics ([#32](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/32)) ([5761849](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/5761849c7e31c53c0cd9ced7e7ddc70fc94dfef4))
+* keep native map export failures retryable ([#35](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/35)) ([a8b7f95](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/a8b7f9566afd048930e742a7eb9fb82809109ea0))
+* support native Designer graph authoring and bounded exports ([749ed8b](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/749ed8b7e4fe19fcf74b2da241eb1e486e9a178d))
+
+
+### Documentation
+
+* align crate lookdev with reference ([#34](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/34)) ([ae1f88a](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/ae1f88a4d3d3ae87e37d69bce6e2a825c5d25f8e))
+* display crate UV gallery and related showcases ([73a5c8a](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/73a5c8a42b043ab48cf9b0750c1cfeea78cde8d5))
+* link to the available website gallery ([19a7e8d](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/19a7e8d0e8668725f5c975a8d2a37aa06097cfe9))
+* refine crate lookdev and ground contact ([f81044b](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/f81044b311e712883ece3a32733fb63215f091ae))
+* showcase crate lookdev with SD rust and scratches ([#33](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/33)) ([ca319d7](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/ca319d7c819c8160a0903f8013022dedfc0d850a))
+
 ## [0.6.1](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.6.0...v0.6.1) (2026-08-25)
 
 

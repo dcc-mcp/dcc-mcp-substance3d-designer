@@ -644,6 +644,10 @@ def _detect_embedded_python_version(path: Path, host_version: str) -> Tuple[str,
         roots.insert(0, path.parent.parent / "plugins" / "pythonsdk")
     discovered = set()
     for root in roots:
+        for marker in root.glob("python*.dll"):
+            match = re.fullmatch(r"python(\d)([0-9]{1,2})", marker.stem, re.IGNORECASE)
+            if marker.is_file() and match:
+                discovered.add(f"{int(match.group(1))}.{int(match.group(2))}")
         for parent in (root / "lib", root / "include"):
             for candidate in parent.glob("python*"):
                 match = re.fullmatch(r"python(\d+\.\d+)", candidate.name)

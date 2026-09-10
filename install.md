@@ -11,17 +11,18 @@ modify a global shell profile, system registry, or the Designer application dire
 - `dcc-mcp-core>=0.20.15` and this adapter installed in that interpreter.
 - Permission to write the current user's `~/.dcc-mcp` directory.
 
-Designer 14 and newer embed Python 3.11; Designer 12.1 through 13.x embed Python 3.9. The
-installer first inspects `plugins/pythonsdk` and uses this release matrix only when the SDK marker
-is unavailable. See Adobe's [Python startup guidance](https://experienceleague.adobe.com/en/docs/substance-3d-designer/using/technical-issues/application-does-not-start).
+The installer inspects `plugins/pythonsdk` for versioned Windows Python DLLs and
+versioned include/lib directories. Designer 16.0 installations can embed Python 3.13.
+When SDK markers are absent, the legacy matrix assumes Python 3.11 for Designer 14+
+and Python 3.9 for Designer 12.1 through 13.x. Prefer the detected SDK ABI. See Adobe's [Python startup guidance](https://experienceleague.adobe.com/en/docs/substance-3d-designer/using/technical-issues/application-does-not-start).
 
 ## Supported versions
 
 | Platform | Host discovery | Supported host/Python |
 | --- | --- | --- |
-| Windows | Creative Cloud default location or `--dcc-path` | Designer 12.1+; Python 3.9/3.11 as embedded |
-| macOS | `/Applications/Adobe Substance 3D Designer.app` or `--dcc-path` | Designer 12.1+; Python 3.9/3.11 as embedded |
-| Linux | `/opt/Adobe/...`, `substance3d-designer` on `PATH`, or `--dcc-path` | Designer 12.1+; Python 3.9/3.11 as embedded |
+| Windows | Creative Cloud default location or `--dcc-path` | Designer 12.1+; Python 3.9+ as embedded |
+| macOS | `/Applications/Adobe Substance 3D Designer.app` or `--dcc-path` | Designer 12.1+; Python 3.9+ as embedded |
+| Linux | `/opt/Adobe/...`, `substance3d-designer` on `PATH`, or `--dcc-path` | Designer 12.1+; Python 3.9+ as embedded |
 
 The lifecycle contract is covered on all three platforms in CI. A real Designer launch remains a
 local host validation because public CI runners do not contain licensed Designer installations.

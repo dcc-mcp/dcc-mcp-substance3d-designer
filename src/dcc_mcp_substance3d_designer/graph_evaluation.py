@@ -11,9 +11,108 @@ from typing import Any
 
 from . import graph_authoring as api
 from .graph_inspection import checked_graph, graph_identity
+from .image_metadata import read_image_metadata
+from .render_process import run_renderer
 
 
-def evaluate_graph(expected_graph_uid: str, max_nodes: int = 1000) -> dict[str, Any]:
+def export_native_maps(
+    output_dir: str, outputs: list[dict], expected_graph_uid: str, max_resolution: int = 2048
+) -> dict:
+    from sd.api.sdproperty import SDPropertyCategory
+
+    from .graph_inspection import find_in_graph
+
+    if not isinstance(outputs, list) or not 1 <= len(outputs) <= 8:
+        raise api.GraphAuthoringError("Select one to eight named texture outputs", "INVALID_GRAPH_OUTPUTS")
+    graph = checked_graph(expected_graph_uid)
+    selected, names = [], set()
+    for item in outputs:
+        name = api.require_identifier(item["name"])
+        if name.casefold() in names:
+            raise api.GraphAuthoringError("Output names must be unique", "INVALID_GRAPH_OUTPUTS")
+        names.add(name.casefold())
+        node = find_in_graph(graph, item["node_id"])
+        prop = node.getPropertyFromId(api.require_property(item["property"]), SDPropertyCategory.Output)
+        if prop is None:
+            raise api.GraphAuthoringError("Selected output property is missing", "PORT_NOT_FOUND")
+        selected.append((name, node, prop))
+    destination = Path(output_dir).expanduser().resolve()
+    if destination.exists():
+        raise api.GraphAuthoringError("Use a fresh output directory", "OUTPUT_EXISTS")
+    evaluate_graph(expected_graph_uid, 128, max_resolution)
+    destination.mkdir(parents=True)
+    files = []
+    for name, node, prop in selected:
+        wrapped = node.getPropertyValue(prop)
+        texture = wrapped.get() if wrapped else None
+        if texture is None:
+            raise api.GraphAuthoringError("Selected texture did not compute", "OUTPUT_NOT_COMPUTED")
+        size = texture.getSize()
+        if not 0 < size.x <= max_resolution or not 0 < size.y <= max_resolution:
+            raise api.GraphAuthoringError("Texture exceeds the resolution budget", "RESOLUTION_LIMIT")
+        path = destination / (name + ".png")
+        if texture.save(str(path)) is False or not path.is_file() or not path.stat().st_size:
+            raise api.GraphAuthoringError("SDK did not save the texture", "MAP_OUTPUT_MISSING")
+        metadata = read_image_metadata(path, "png", None)
+        if (metadata["width"], metadata["height"]) != (size.x, size.y):
+            raise api.GraphAuthoringError("Saved texture dimensions do not match SDK readback", "MAP_HEADER_INVALID")
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        files.append({"name": name, "path": str(path), "sha256": digest.hexdigest(), "image_metadata": metadata})
+    return {
+        "graph_uid": expected_graph_uid,
+        "files": files,
+        "precision_policy": "native SDK texture precision; no inferred height precision",
+    }
+
+
+def validate_resolution_budget(graph: Any, max_resolution: int) -> None:
+    from sd.api.sdproperty import SDPropertyCategory
+
+    if type(max_resolution) is not int or max_resolution not in (256, 512, 1024, 2048, 4096):
+        raise api.GraphAuthoringError("Unsupported resolution budget", "INVALID_RESOLUTION_BUDGET")
+    maximum = max_resolution.bit_length() - 1
+    prop = graph.getPropertyFromId("$outputsize", SDPropertyCategory.Input)
+    if prop is None or graph.getPropertyInheritanceMethod(prop).name != "Absolute":
+        raise api.GraphAuthoringError(
+            "Set an absolute graph output size before bounded evaluation", "RESOLUTION_UNPROVEN"
+        )
+    base = api.json_value(graph.getPropertyValue(prop))
+
+    def checked(size):
+        if (
+            not isinstance(size, list)
+            or len(size) != 2
+            or any(type(x) is not int or not 0 <= x <= maximum for x in size)
+        ):
+            raise api.GraphAuthoringError("Output size exceeds the resolution budget", "RESOLUTION_LIMIT")
+
+    checked(base)
+    for node in api.items(graph.getNodes()):
+        size_prop = node.getPropertyFromId("$outputsize", SDPropertyCategory.Input)
+        if size_prop is None:
+            continue
+        if node.getPropertyGraph(size_prop) is not None:
+            raise api.GraphAuthoringError("Dynamic output size cannot be bounded statically", "RESOLUTION_UNPROVEN")
+        size = api.json_value(node.getPropertyValue(size_prop))
+        if not isinstance(size, list) or len(size) != 2 or any(type(x) is not int for x in size):
+            raise api.GraphAuthoringError("Node output size is unavailable", "RESOLUTION_UNPROVEN")
+        method = node.getPropertyInheritanceMethod(size_prop).name
+        if method == "Absolute":
+            checked(size)
+        elif method == "RelativeToParent":
+            checked([a + b for a, b in zip(base, size)])
+        elif method == "RelativeToInput" and all(x <= 0 for x in size):
+            continue  # With no amplification, upstream sizes remain within this budget.
+        else:
+            raise api.GraphAuthoringError(
+                "Input-relative amplification cannot be bounded statically", "RESOLUTION_UNPROVEN"
+            )
+
+
+def evaluate_graph(expected_graph_uid: str, max_nodes: int = 1000, max_resolution: int = 2048) -> dict[str, Any]:
     from sd.api.sdproperty import SDPropertyCategory
 
     if type(max_nodes) is not int or not 1 <= max_nodes <= 1000:
@@ -24,6 +123,7 @@ def evaluate_graph(expected_graph_uid: str, max_nodes: int = 1000) -> dict[str, 
     output_nodes = api.items(graph.getOutputNodes())
     if not output_nodes:
         raise api.GraphAuthoringError("Graph has no outputs", "NO_GRAPH_OUTPUTS")
+    validate_resolution_budget(graph, max_resolution)
     graph.compute()  # SDK is synchronous. The main-thread tool is dispatched async.
     outputs = []
     for node in output_nodes:
@@ -110,7 +210,7 @@ def export_maps(
     for identifier, space in sorted(spaces.items()):
         command.extend(["--set-output-colorspace", f"{identifier}@{space}"])
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=600, check=False)
+        result = run_renderer(command, timeout=600)
     except subprocess.TimeoutExpired as exc:
         raise api.GraphAuthoringError("sbsrender timed out", "MAP_EXPORT_TIMEOUT") from exc
     if result.returncode != 0:
@@ -120,12 +220,18 @@ def export_maps(
         path = run_dir / f"{identifier}.{image_format}"
         if not path.is_file() or path.is_symlink() or not path.stat().st_size:
             raise api.GraphAuthoringError(f"Missing or empty output: {identifier}", "MAP_OUTPUT_MISSING")
+        metadata = read_image_metadata(path, image_format, bit_depth)
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
         files.append(
             {
                 "output_id": identifier,
                 "path": str(path),
                 "bytes": path.stat().st_size,
-                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "sha256": digest.hexdigest(),
+                "image_metadata": metadata,
                 "color_space": spaces.get(identifier, color_space),
             }
         )

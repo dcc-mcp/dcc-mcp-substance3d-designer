@@ -1,6 +1,8 @@
 """Test artifact evidence and preservation of open packages independently of UI."""
 
+import struct
 import sys
+import zlib
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -38,10 +40,13 @@ def test_export_uses_archive_isolates_artifacts_and_passes_per_output_space(expo
         assert archive.suffix == ".sbsar" and archive.read_bytes() == b"archive"
         output = Path(command[command.index("--output-path") + 1])
         for identifier in ("basecolor", "roughness"):
-            (output / f"{identifier}.png").write_bytes(b"fresh renderer output")
+            header = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + struct.pack(
+                ">IIBBBBB", 128, 128, int(command[command.index("--output-bit-depth") + 1]), 2, 0, 0, 0
+            )
+            (output / f"{identifier}.png").write_bytes(header + struct.pack(">I", zlib.crc32(header[12:])))
         return SimpleNamespace(returncode=0)
 
-    monkeypatch.setattr(evaluation.subprocess, "run", render)
+    monkeypatch.setattr(evaluation, "run_renderer", render)
     result = evaluation.export_maps(
         str(tmp_path), bit_depth="16", expected_graph_uid="graph-A", output_color_spaces={"basecolor": "sRGB"}
     )
@@ -72,7 +77,7 @@ def test_export_rejects_false_success_and_stale_files(export_host, monkeypatch, 
             raise evaluation.subprocess.TimeoutExpired("sbsrender", 600)
         return SimpleNamespace(returncode=1 if mode == "failed" else 0)
 
-    monkeypatch.setattr(evaluation.subprocess, "run", render)
+    monkeypatch.setattr(evaluation, "run_renderer", render)
     with pytest.raises(api.GraphAuthoringError) as error:
         evaluation.export_maps(str(tmp_path))
     assert error.value.code == code
@@ -175,14 +180,17 @@ def test_output_setup_failure_removes_new_node(monkeypatch):
 
 def test_evaluation_requires_outputs_and_real_texture_dimensions(monkeypatch):
     module = ModuleType("sd.api.sdproperty")
-    module.SDPropertyCategory = SimpleNamespace(Output="Output")
+    module.SDPropertyCategory = SimpleNamespace(Output="Output", Input="Input")
     monkeypatch.setitem(sys.modules, module.__name__, module)
     calls, outputs = [], []
     graph = SimpleNamespace(
         getUID=lambda: "graph-A",
-        getNodes=lambda: [1],
+        getNodes=lambda: outputs,
         getOutputNodes=lambda: outputs,
         compute=lambda: calls.append("compute"),
+        getPropertyFromId=lambda *args: object(),
+        getPropertyInheritanceMethod=lambda prop: SimpleNamespace(name="Absolute"),
+        getPropertyValue=lambda prop: [10, 10],
     )
     monkeypatch.setattr(api, "active_graph", lambda: graph)
     with pytest.raises(api.GraphAuthoringError) as error:
@@ -192,6 +200,7 @@ def test_evaluation_requires_outputs_and_real_texture_dimensions(monkeypatch):
     outputs.append(
         SimpleNamespace(
             getIdentifier=lambda: "100",
+            getPropertyFromId=lambda *args: None,
             getProperties=lambda category: [SimpleNamespace(getId=lambda: "out")],
             getPropertyValue=lambda prop: SimpleNamespace(get=lambda: texture),
         )

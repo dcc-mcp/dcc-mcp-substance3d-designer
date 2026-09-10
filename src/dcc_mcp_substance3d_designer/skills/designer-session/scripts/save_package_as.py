@@ -9,5 +9,5 @@ from dcc_mcp_substance3d_designer.skill_support import typed_result
 
 
 @skill_entry
-def main(path: str, **_kwargs):
-    return typed_result("Saved Designer package as", save_package_as, path)
+def main(path: str, expected_graph_uid: str | None = None, **_kwargs):
+    return typed_result("Saved Designer package as", save_package_as, path, expected_graph_uid)

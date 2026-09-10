@@ -142,5 +142,6 @@ tests do not verify the visual result. Use a fresh output directory per iteratio
 
 See the [reference-material capability matrix](docs/reference-material-capabilities.md)
 for node inspection, connection guards, resource instancing, persistence/export
-contracts and remaining live-host validation. Parameter exposure currently returns
-`EXPOSE_API_UNAVAILABLE`; editable node parameters remain available.
+contracts and remaining live-host validation. Parameter exposure uses public graph inputs and property function graphs; unsupported
+SDK variable readers return `EXPOSE_API_UNAVAILABLE`. Native PNG exports report
+actual channel count and bit depth, and graph input edits are verified by readback.

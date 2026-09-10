@@ -40,8 +40,10 @@ official `sbsrender` executable discovered by the host environment and always
 requires explicit format, bit depth, and color-space settings; it fails closed
 when that executable is unavailable.
 
-Parameter exposure is not implemented for the inspected public SDK. The tool
-returns `EXPOSE_API_UNAVAILABLE`; a verified function-graph binding is still needed.
+`expose_parameter` binds a writable constant input through the public graph-input
+and function-graph APIs. The SDK must advertise the required variable reader and
+a unique string input; unsupported types return `EXPOSE_API_UNAVAILABLE` or
+`EXPOSE_TYPE_UNSUPPORTED`. Use `set_graph_parameter` to edit the exposed value.
 Host API calls remain on the
 Designer main thread through the adapter's Core execution bridge.
 
@@ -54,9 +56,15 @@ removal. Open package resources can be inspected, selected or instanced through
 `list_resources`, `select_graph` and `instance_resource`; `create_subgraph` creates
 a same-package composition graph. Recursive instances are rejected.
 
-`evaluate_graph` checks a node-count budget and computed output texture metadata.
+`inspect_graph_session` reports package ownership/dirty state, graph inputs, node
+connections/function bindings and the last application interop error. This is not
+a per-node compiler log.
+
+`evaluate_graph` checks node and static resolution budgets and output texture metadata.
 Compute remains synchronous with no hard cancellation deadline. Exported file
-hashes prove fresh bytes, not image-header validity or visual material accuracy.
+headers verify dimensions and actual bit depth; hashes prove fresh bytes, not
+visual material accuracy. `export_native_maps` preserves native texture precision
+without requiring SAT. SAT export owns the renderer process tree for timeout cleanup.
 Save before closing a modified package; opening an already-open package preserves
 its in-memory edits. Use a new path to export SBSAR or save another package.
 

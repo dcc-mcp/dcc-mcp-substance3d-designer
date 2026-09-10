@@ -283,6 +283,7 @@ def typed_value(value_type: str, raw: Any) -> Any:
 
         return SDValueString.sNew(raw)
     vector_specs = {
+        "color": (4, "ColorRGBA", "SDValueColorRGBA", "sd.api.sdvaluecolorrgba"),
         "int2": (2, "int2", "SDValueInt2", "sd.api.sdvalueint2"),
         "float2": (2, "float2", "SDValueFloat2", "sd.api.sdvaluefloat2"),
         "float3": (3, "float3", "SDValueFloat3", "sd.api.sdvaluefloat3"),
@@ -319,6 +320,8 @@ def json_value(raw: Any) -> Any:
         components.append(component)
     if components:
         return [json_value(component) for component in components]
+    if all(hasattr(raw, name) for name in ("r", "g", "b", "a")):
+        return [json_value(getattr(raw, name)) for name in ("r", "g", "b", "a")]
     identifier = value(raw, "getId", "getIdentifier")
     if identifier is not None:
         return str(identifier)
@@ -372,20 +375,12 @@ def get_parameter(node_id: str, parameter: str) -> dict[str, Any]:
     }
 
 
-def expose_parameter(node_id: str, parameter: str, exposed_id: str) -> dict[str, str]:
-    identifier = require_property(parameter, "parameter")
-    require_identifier(exposed_id, "exposed_id")
+def expose_parameter(
+    node_id: str, parameter: str, exposed_id: str, expected_graph_uid: str | None = None
+) -> dict[str, Any]:
+    from .graph_parameters import expose_parameter as expose
 
-    from sd.api.sdproperty import SDPropertyCategory
-
-    node = find_node(node_id)
-    prop = node.getPropertyFromId(identifier, SDPropertyCategory.Input)
-    if prop is None:
-        raise GraphAuthoringError(f"Input parameter '{identifier}' was not found", "PARAMETER_NOT_FOUND")
-    raise GraphAuthoringError(
-        "Parameter exposure needs a verified public function-graph binding implementation",
-        "EXPOSE_API_UNAVAILABLE",
-    )
+    return expose(node_id, parameter, exposed_id, expected_graph_uid)
 
 
 def add_output(
@@ -485,7 +480,11 @@ def save_package() -> dict[str, Any]:
     return {"package_path": package_path(package), "saved": True}
 
 
-def save_package_as(path: str) -> dict[str, Any]:
+def save_package_as(path: str, expected_graph_uid: str | None = None) -> dict[str, Any]:
+    from .graph_inspection import checked_graph
+
+    if expected_graph_uid is not None:
+        checked_graph(expected_graph_uid)
     resolved = _sbs_path(path, must_exist=False)
     package = active_package()
     if resolved.exists() and (not package_path(package) or resolved != Path(package_path(package)).resolve()):

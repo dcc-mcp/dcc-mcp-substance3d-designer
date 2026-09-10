@@ -261,6 +261,7 @@ tools:
           - float2
           - float3
           - float4
+          - color
         value:
           anyOf:
           - type: boolean
@@ -343,7 +344,8 @@ tools:
       destructive_hint: false
       idempotent_hint: true
   - name: expose_parameter
-    description: Parameter exposure is not yet implemented for the public SDK; returns EXPOSE_API_UNAVAILABLE.
+    description: Bind a constant input to a graph input using a verified SDK variable
+      reader and property function graph.
     input_schema:
       type: object
       additionalProperties: false
@@ -363,6 +365,10 @@ tools:
         exposed_id:
           type: string
           pattern: ^[A-Za-z][A-Za-z0-9_]*$
+          maxLength: 128
+        expected_graph_uid:
+          type: string
+          minLength: 1
           maxLength: 128
     read_only: false
     destructive: false
@@ -507,9 +513,17 @@ tools:
     input_schema:
       type: object
       additionalProperties: false
-      required: [path]
+      required:
+      - path
       properties:
-        path: {type: string, minLength: 1, maxLength: 4096}
+        path:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
     read_only: false
     destructive: true
     idempotent: true
@@ -517,8 +531,22 @@ tools:
     affinity: main
     timeout_hint_secs: 60
     source_file: scripts/save_package_as.py
-    output_schema: {type: object, required: [success, message], properties: {success: {type: boolean}, message: {type: string}, context: {type: object}}}
-    annotations: {read_only_hint: false, destructive_hint: true, idempotent_hint: true}
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    annotations:
+      read_only_hint: false
+      destructive_hint: true
+      idempotent_hint: true
   - name: close_package
     description: Close the package that owns the active graph without an implicit save.
     input_schema: {type: object, additionalProperties: false, properties: {}}
@@ -1232,8 +1260,8 @@ tools:
       destructive_hint: false
       idempotent_hint: false
   - name: evaluate_graph
-    description: Compute a graph within the node budget and inspect every output texture. SDK compute is synchronous and cannot
-      be cancelled.
+    description: Compute a graph within the node budget and inspect every output texture.
+      SDK compute is synchronous and cannot be cancelled.
     input_schema:
       type: object
       additionalProperties: false
@@ -1247,6 +1275,15 @@ tools:
           minimum: 1
           maximum: 1000
           default: 1000
+        max_resolution:
+          type: integer
+          enum:
+          - 256
+          - 512
+          - 1024
+          - 2048
+          - 4096
+          default: 2048
       required:
       - expected_graph_uid
     output_schema:
@@ -1268,6 +1305,186 @@ tools:
     affinity: main
     timeout_hint_secs: 120
     source_file: scripts/evaluate_graph.py
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: false
+  - name: inspect_graph_session
+    description: Read active package path and dirty state, graph identity, per-node
+      input diagnostics and last application interop error.
+    input_schema:
+      type: object
+      additionalProperties: false
+      properties:
+        offset:
+          type: integer
+          minimum: 0
+          default: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 100
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: true
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/inspect_graph_session.py
+    annotations:
+      read_only_hint: true
+      destructive_hint: false
+      idempotent_hint: true
+  - name: set_graph_parameter
+    description: Set a typed graph input and verify SDK readback in the expected graph.
+    input_schema:
+      type: object
+      additionalProperties: false
+      required:
+      - parameter
+      - value_type
+      - value
+      - expected_graph_uid
+      properties:
+        parameter:
+          type: string
+          pattern: ^[$]?[A-Za-z][A-Za-z0-9_.-]*$
+          maxLength: 128
+        value_type:
+          type: string
+          enum:
+          - bool
+          - int
+          - float
+          - string
+          - int2
+          - float2
+          - float3
+          - float4
+          - color
+        value:
+          anyOf:
+          - type: boolean
+          - type: integer
+          - type: number
+          - type: string
+            maxLength: 4096
+          - type: array
+            minItems: 2
+            maxItems: 4
+            items:
+              type: number
+              minimum: -1000000
+              maximum: 1000000
+        expected_graph_uid:
+          type: string
+          minLength: 1
+          maxLength: 128
+    read_only: false
+    destructive: false
+    idempotent: true
+    execution: sync
+    affinity: main
+    timeout_hint_secs: 30
+    source_file: scripts/set_graph_parameter.py
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    annotations:
+      read_only_hint: false
+      destructive_hint: false
+      idempotent_hint: true
+  - name: export_native_maps
+    description: Compute within node/resolution budgets and export selected PNG textures
+      with actual header/depth readback.
+    input_schema:
+      type: object
+      additionalProperties: false
+      required:
+      - output_dir
+      - outputs
+      - expected_graph_uid
+      properties:
+        output_dir:
+          type: string
+          minLength: 1
+        expected_graph_uid:
+          type: string
+          minLength: 1
+        max_resolution:
+          type: integer
+          enum:
+          - 256
+          - 512
+          - 1024
+          - 2048
+          - 4096
+          default: 2048
+        outputs:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - name
+            - node_id
+            - property
+            properties:
+              name:
+                type: string
+                minLength: 1
+                maxLength: 128
+              node_id:
+                type: string
+                minLength: 1
+                maxLength: 128
+              property:
+                type: string
+                minLength: 1
+                maxLength: 128
+    output_schema:
+      type: object
+      required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    read_only: false
+    destructive: false
+    idempotent: false
+    execution: async
+    affinity: main
+    timeout_hint_secs: 120
+    source_file: scripts/export_native_maps.py
     annotations:
       read_only_hint: false
       destructive_hint: false

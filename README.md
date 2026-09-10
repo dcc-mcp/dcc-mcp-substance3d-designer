@@ -4,6 +4,29 @@
   <img src="docs/assets/dcc-mcp-substance3d-designer.svg" alt="DCC-MCP · SUBSTANCE3D-DESIGNER" width="600">
 </p>
 
+## Showcase: reference image to editable material
+
+A Codex-generated reference guided a procedural painted-wood material authored
+and evaluated in **Substance 3D Designer 16** through DCC-MCP. The olive paint and
+exposed wood were color-corrected in the graph before exporting the maps.
+
+| Codex-generated reference | Base Color generated in Designer |
+| --- | --- |
+| ![Generated weathered-crate reference](docs/showcase/painted-wood/reference.png) | ![Color-corrected procedural painted wood](docs/showcase/painted-wood/baseColor.png) |
+
+**Complete material graph — real Designer screenshot, 19 nodes:**
+
+![Complete painted-wood node workflow captured in Substance 3D Designer](docs/showcase/painted-wood/designer-graph.png)
+
+[Download the editable SBS](docs/showcase/painted-wood/painted-wood.sbs) ·
+[Compiled SBSAR](docs/showcase/painted-wood/painted-wood.sbsar) ·
+[All five maps, before/after colors, and capture details](docs/showcase/painted-wood/README.md)
+
+This example reconstructs a tileable **surface material**. The generated crate
+image is a reference, not a Designer render; crate geometry, hardware and UVs
+are outside this example. Screenshots and exported maps are actual Designer
+outputs, captured through the project's DCC-CUA route.
+
 ## Agent workflow
 
 AI agents should use the shared gateway through `dcc-mcp-cli`; IDE users may

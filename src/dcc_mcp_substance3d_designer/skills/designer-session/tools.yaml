@@ -487,11 +487,11 @@ tools:
       on-failure:
         - designer_session__inspect_session
   - name: create_imported_pbr_material
-    description: Import BaseColor, Normal, and packed RMA or ARM textures, split the packed channels, and render a Designer PBR material package.
+    description: Import packed RMA/ARM or separate PBR maps, with optional height, into an editable Designer package.
     input_schema:
       type: object
       required:
-        [package_path, output_dir, base_color_path, normal_path, packed_rmas_path]
+        [package_path, output_dir, base_color_path, normal_path]
       properties:
         package_path:
           type: string
@@ -507,7 +507,23 @@ tools:
           description: Tangent-space Normal texture path.
         packed_rmas_path:
           type: string
-          description: Packed texture containing Roughness, Metallic, and AO channels.
+          description: Packed Roughness, Metallic, and AO texture. Mutually exclusive with separate scalar maps.
+        roughness_path:
+          type: string
+          description: Required with metallic_path when packed_rmas_path is omitted.
+        metallic_path:
+          type: string
+          description: Required with roughness_path when packed_rmas_path is omitted.
+        ambient_occlusion_path:
+          type: string
+          description: Optional separate ambient_occlusion map path.
+        height_path:
+          type: string
+          description: Optional separate height map path.
+        embed_resources:
+          type: boolean
+          default: false
+          description: Embed source maps in the package for portable delivery.
         packed_channel_layout:
           type: string
           enum: [RMA, ARM]

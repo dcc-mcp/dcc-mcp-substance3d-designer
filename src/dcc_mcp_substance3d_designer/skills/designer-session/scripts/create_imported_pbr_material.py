@@ -1,4 +1,4 @@
-"""Create a Designer PBR graph from imported BaseColor, Normal, and RMAS maps."""
+"""Create an editable Designer graph from packed or separate PBR maps."""
 
 from __future__ import annotations
 
@@ -39,20 +39,37 @@ def main(
     output_dir: str,
     base_color_path: str,
     normal_path: str,
-    packed_rmas_path: str,
+    packed_rmas_path: str | None = None,
     packed_channel_layout: str = "RMA",
     graph_identifier: str = "imported_pbr_material",
     open_in_editor: bool = True,
+    roughness_path: str | None = None,
+    metallic_path: str | None = None,
+    ambient_occlusion_path: str | None = None,
+    height_path: str | None = None,
+    embed_resources: bool = False,
     **_kwargs,
 ):
     try:
         identifier = _normalize_identifier(graph_identifier)
-        packed_outputs = _packed_outputs(packed_channel_layout)
+        packed_outputs = _packed_outputs(packed_channel_layout) if packed_rmas_path else {}
         source_files = {
             "BaseColor": _resolve_texture(base_color_path, "base_color_path"),
             "Normal": _resolve_texture(normal_path, "normal_path"),
-            "RMAS": _resolve_texture(packed_rmas_path, "packed_rmas_path"),
         }
+        separate = {"Roughness": roughness_path, "Metallic": metallic_path, "AmbientOcclusion": ambient_occlusion_path}
+        if packed_rmas_path:
+            if any(path is not None for path in separate.values()):
+                raise ValueError("Use packed_rmas_path or separate maps, not both")
+            source_files["RMAS"] = _resolve_texture(packed_rmas_path, "packed_rmas_path")
+        else:
+            if not roughness_path or not metallic_path:
+                raise ValueError("Separate maps require roughness_path and metallic_path")
+            for name, path in separate.items():
+                if path is not None:
+                    source_files[name] = _resolve_texture(path, name)
+        if height_path is not None:
+            source_files["Height"] = _resolve_texture(height_path, "height_path")
     except (TypeError, ValueError) as exc:
         return skill_error("Invalid imported PBR material parameters", str(exc))
 
@@ -84,32 +101,34 @@ def main(
 
     imported_nodes = {}
     for index, (name, path) in enumerate(source_files.items()):
-        resource = SDResourceBitmap.sNewFromFile(package, str(path), EmbedMethod.Linked)
+        resource = SDResourceBitmap.sNewFromFile(
+            package, str(path), EmbedMethod.Embedded if embed_resources else EmbedMethod.Linked
+        )
         node = graph.newInstanceNode(resource)
         node.setPosition(float2(-5 * grid, (index - 1) * 3 * grid))
         imported_nodes[name] = node
 
-    default_resources = Path(application.getPath(SDApplicationPath.DefaultResourcesDir))
-    split_package = package_manager.loadUserPackage(
-        str(default_resources / "packages" / "rgba_split.sbs"),
-        True,
-    )
-    split_resource = split_package.findResourceFromUrl("rgba_split")
-    if split_resource is None:
-        return skill_error("Designer RGBA split resource is unavailable", "RESOURCE_NOT_FOUND")
-    split = graph.newInstanceNode(split_resource)
-    split.setPosition(float2(-2 * grid, 3 * grid))
+    if packed_rmas_path:
+        default_resources = Path(application.getPath(SDApplicationPath.DefaultResourcesDir))
+        split_package = package_manager.loadUserPackage(
+            str(default_resources / "packages" / "rgba_split.sbs"),
+            True,
+        )
+        split_resource = split_package.findResourceFromUrl("rgba_split")
+        if split_resource is None:
+            return skill_error("Designer RGBA split resource is unavailable", "RESOURCE_NOT_FOUND")
+        split = graph.newInstanceNode(split_resource)
+        split.setPosition(float2(-2 * grid, 3 * grid))
 
-    packed = imported_nodes["RMAS"]
-    packed_output = packed.getProperties(SDPropertyCategory.Output)[0].getId()
-    packed.newPropertyConnectionFromId(packed_output, split, "RGBA")
+        packed = imported_nodes["RMAS"]
+        packed_output = packed.getProperties(SDPropertyCategory.Output)[0].getId()
+        packed.newPropertyConnectionFromId(packed_output, split, "RGBA")
 
     def first_output(node) -> str:
         return node.getProperties(SDPropertyCategory.Output)[0].getId()
 
     rendered_sources = {
-        "BaseColor": (imported_nodes["BaseColor"], first_output(imported_nodes["BaseColor"])),
-        "Normal": (imported_nodes["Normal"], first_output(imported_nodes["Normal"])),
+        **{name: (node, first_output(node)) for name, node in imported_nodes.items() if name != "RMAS"},
         **{name: (split, channel) for name, channel in packed_outputs.items()},
     }
     output_specs = {
@@ -118,6 +137,7 @@ def main(
         "Roughness": ("roughness", "L", "Raw"),
         "Metallic": ("metallic", "L", "Raw"),
         "AmbientOcclusion": ("ambientOcclusion", "L", "Raw"),
+        "Height": ("height", "L", "Raw"),
     }
 
     for index, (name, (source, source_output)) in enumerate(rendered_sources.items()):
@@ -130,7 +150,9 @@ def main(
         source.newPropertyConnectionFromId(source_output, output, "inputNodeOutput")
 
     graph.compute()
-    package_manager.savePackageAs(package, str(package_file))
+    saved = package_manager.savePackageAs(package, str(package_file))
+    if saved is False or not package_file.is_file() or package_file.stat().st_size == 0:
+        return skill_error("Designer package save could not be verified", "PACKAGE_SAVE_FAILED")
 
     texture_files = {}
     for name, (source, source_output) in rendered_sources.items():
@@ -138,7 +160,9 @@ def main(
         if value is None:
             return skill_error("Designer graph output did not compute", name)
         texture_path = texture_dir / f"{identifier}_{name}.png"
-        value.get().save(str(texture_path))
+        saved = value.get().save(str(texture_path))
+        if saved is False or not texture_path.is_file() or texture_path.stat().st_size == 0:
+            return skill_error("Designer texture save could not be verified", f"MAP_SAVE_FAILED: {name}")
         texture_files[name] = str(texture_path)
 
     if open_in_editor:
@@ -148,7 +172,8 @@ def main(
         "Created and rendered Designer imported PBR material",
         package_path=str(package_file),
         graph_identifier=identifier,
-        packed_channel_layout=packed_channel_layout.strip().upper(),
+        packed_channel_layout=packed_channel_layout.strip().upper() if packed_rmas_path else None,
+        embedded_resources=embed_resources,
         node_count=len(graph.getNodes()),
         source_files={name: str(path) for name, path in source_files.items()},
         texture_files=texture_files,

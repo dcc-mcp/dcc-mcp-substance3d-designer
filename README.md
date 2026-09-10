@@ -94,3 +94,48 @@ python -m build
 
 Releases use release-please. The `release.yml` workflow publishes through the
 `pypi` environment using PyPI Trusted Publishing.
+
+
+### Reference-material reconstruction
+
+`designer-session.create_imported_pbr_material` accepts either packed RMA/ARM maps
+or separate `roughness_path` and `metallic_path`, alongside the required base-color
+and normal maps. Separate AO is optional. `height_path` works with either mode;
+packed and separate scalar maps cannot be mixed. Set `embed_resources: true` to
+embed the source bitmaps in the editable `.sbs` instead of linking them.
+
+Example tool arguments (replace the paths with existing source maps):
+
+```json
+{
+  "package_path": "C:/materials/sample/material.sbs",
+  "output_dir": "C:/materials/sample/maps",
+  "base_color_path": "C:/sources/basecolor.png",
+  "normal_path": "C:/sources/normal.png",
+  "roughness_path": "C:/sources/roughness.png",
+  "metallic_path": "C:/sources/metallic.png",
+  "ambient_occlusion_path": "C:/sources/ao.png",
+  "height_path": "C:/sources/height.png",
+  "embed_resources": true,
+  "open_in_editor": false
+}
+```
+
+This creates an editable bitmap/output graph, not a recovered procedural material.
+Use the existing node creation, connection and parameter tools to construct and
+iterate procedural structure when needed. Source images must already be PBR maps;
+a lit reference photograph is not directly a base-color map. A single image does
+not uniquely determine roughness, metallic response, illumination or physical
+height. Record these as estimates until checked against additional evidence.
+
+For a Designer-to-Painter handoff, pass the returned `texture_files` to Painter's
+`create_textured_pbr_layer`, mapping `AmbientOcclusion` to
+`ambient_occlusion_path` and optional `Height` to `height_path`. Keep the normal
+convention and color-management configuration consistent across both hosts.
+The import helper writes PNG previews without a configurable bit-depth contract;
+retain original high-precision height sources when precision matters.
+
+Before accepting a result, reopen the saved `.sbs` and `.spp`, inspect graph
+connections and layer channels, verify the exported maps, and compare actual host
+renders under matched lighting, camera and scale. File existence and mocked SDK
+tests do not verify the visual result. Use a fresh output directory per iteration.

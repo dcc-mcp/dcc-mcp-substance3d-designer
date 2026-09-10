@@ -10,31 +10,40 @@
   "files": [
     {
       "path": "crate.blend",
-      "sha256": "172b739079db876ddea37b17227f2ef51a3e0bc8ea392e20ebc488d2efb4f967",
-      "bytes": 20755019
+      "sha256": "1098d4fcb3a48d4ce6bc7988f64a57b99f44a594d2bb2aa1383a4b4e321396fb",
+      "bytes": 33531219
     },
     {
       "path": "detail.png",
-      "sha256": "e00dad45b2c52dc0f8978cf50152f766e71dd816bd5f717e99741fd1467ff161",
-      "bytes": 2454052,
-      "width": 1200,
-      "height": 1200,
+      "sha256": "29f658224756f599638650edb75c1f7f68955434577551142f2ab048f88baff8",
+      "bytes": 2484274,
+      "width": 1400,
+      "height": 1100,
       "bit_depth": 8,
       "color_type": 6
     },
     {
       "path": "render.png",
-      "sha256": "af5ff910fe261cce1dc5e7d9d2898e423c9244612dfe340cd65ffb1192ca4aae",
-      "bytes": 3312385,
+      "sha256": "9a47b8f10a2906b2671f17cf800a61a4ed626af485b62ac812bfd312e279a084",
+      "bytes": 3434794,
       "width": 1600,
       "height": 1600,
       "bit_depth": 8,
       "color_type": 6
     },
     {
+      "path": "steel/bareSteelColor.png",
+      "sha256": "0f43c23751dca61a40d47f5318b06f5aa4cf2a99e1b9da0e38dc88e7f54c49b4",
+      "bytes": 1293405,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "color_type": 2
+    },
+    {
       "path": "steel/baseColor.png",
-      "sha256": "76b0e45bbfe8d69778f145799008145221597003647909ccbeff032fbbe56251",
-      "bytes": 1349731,
+      "sha256": "83d0fe0a7bad66dbd03f0460607644ea0fe3f4440af9305da0394225658f123c",
+      "bytes": 1805896,
       "width": 1024,
       "height": 1024,
       "bit_depth": 8,
@@ -42,8 +51,8 @@
     },
     {
       "path": "steel/designer-graph.png",
-      "sha256": "532a70754a96e352d2f9033642d186c92ea2704eb52755fa1f54b10e4c9c48ca",
-      "bytes": 551383,
+      "sha256": "ce164d9a284560ef4c27de0355e7ab8009a7e08925a5c1d37506ade3fd5e285d",
+      "bytes": 617425,
       "width": 1568,
       "height": 931,
       "bit_depth": 8,
@@ -51,8 +60,8 @@
     },
     {
       "path": "steel/height.png",
-      "sha256": "c487d29e8bb813eeaf06b1e7ce552c16abc61a10b3902514deffaaa52150727b",
-      "bytes": 1186893,
+      "sha256": "02f0919ccfa5180968ae621502f8c0ac0399fb20f58fbdae37f2831750799552",
+      "bytes": 1935080,
       "width": 1024,
       "height": 1024,
       "bit_depth": 16,
@@ -60,9 +69,9 @@
     },
     {
       "path": "steel/material.sbs",
-      "sha256": "17426b74ce83162cd2f431d470d552d30dc9c549f06dc36a999ac09dbe0abdf2",
-      "bytes": 15564,
-      "nodes": 27,
+      "sha256": "162b548c13c6949e93407bc9b0d320be0323e258f56ea711634ccfa5fe217300",
+      "bytes": 18471,
+      "nodes": 32,
       "dependencies": [
         "sbs://grunge_rust_fine.sbs",
         "sbs://scratches_generator.sbs"
@@ -70,14 +79,14 @@
     },
     {
       "path": "steel/material.sbsar",
-      "sha256": "9aa9a99de6a5c0a69f4ccbb28fb1cd977fc225a07f283bb0cb84e84249fef2ca",
-      "bytes": 6298,
+      "sha256": "12fc2d319442ff5b329dc3f37690db8d422861900bc11cfaf8feea537ed07817",
+      "bytes": 6352,
       "container": "native SBSAR / 7z"
     },
     {
       "path": "steel/metallic.png",
-      "sha256": "32a373f04924ac83391362ead0776a30dbf266967f6947dd0741fe666bcf2e5e",
-      "bytes": 797199,
+      "sha256": "9ecea5bbde3ffb67e57aabaee019d8909db3bdac3a236269777027691db69727",
+      "bytes": 630674,
       "width": 1024,
       "height": 1024,
       "bit_depth": 8,
@@ -85,8 +94,8 @@
     },
     {
       "path": "steel/normal.png",
-      "sha256": "c29a660df08aef9f732a53647af4d942436c7547f5c51a5985d3269b29140344",
-      "bytes": 5228799,
+      "sha256": "7e64e4fc9d3f60dc7346f4f07e9c87413665b5fe7b513fb20aaa6fffeed8ee1e",
+      "bytes": 8221807,
       "width": 1024,
       "height": 1024,
       "bit_depth": 16,
@@ -94,8 +103,8 @@
     },
     {
       "path": "steel/roughness.png",
-      "sha256": "2943910fb4f6f48e8211d3f397bf835f4bb4a4a4cfd93d57881a674fc5d589ab",
-      "bytes": 926597,
+      "sha256": "6022a7005a72ada66723fe5e9b0099ebc778c3b954cb75acd3a66aa43a8d3397",
+      "bytes": 751228,
       "width": 1024,
       "height": 1024,
       "bit_depth": 8,
@@ -103,8 +112,8 @@
     },
     {
       "path": "steel/rustMask.png",
-      "sha256": "dd2b77d5a029516496fefceeee5d2f0371ac54fc9371368b533fcf95503bab86",
-      "bytes": 958745,
+      "sha256": "f559721f2da37de0300c7249b772dc892092bd98eeba7daeaa7897780438dc06",
+      "bytes": 743248,
       "width": 1024,
       "height": 1024,
       "bit_depth": 16,
@@ -112,17 +121,26 @@
     },
     {
       "path": "steel/scratchMask.png",
-      "sha256": "d468b3ff500bc5cb6d6a9fb8d0113a6bf2924154d454b2d725762c3f779bf34f",
-      "bytes": 103888,
+      "sha256": "ab54925513e7d46289c038aefe07fed8285a1233912ea1475ec9881b66555348",
+      "bytes": 70716,
       "width": 1024,
       "height": 1024,
       "bit_depth": 8,
       "color_type": 0
     },
     {
+      "path": "wood/bareWoodColor.png",
+      "sha256": "78e05fa844099fa2707aa9d85255aa3b9212df2e4187fac231f96de3a9d7b5e3",
+      "bytes": 1228337,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 8,
+      "color_type": 2
+    },
+    {
       "path": "wood/baseColor.png",
-      "sha256": "50b036f937f19c2b373dc4a897acec581e415b34600e2632672a13542abf1086",
-      "bytes": 932077,
+      "sha256": "7e8ded140be9f80f93663e381691cd48f687466b78a6cb87c8bbc422a3bdbf45",
+      "bytes": 1408159,
       "width": 1024,
       "height": 1024,
       "bit_depth": 8,
@@ -130,8 +148,8 @@
     },
     {
       "path": "wood/designer-graph.png",
-      "sha256": "bb706404737e96b8b8ce816d3ef89cba6217ed21a1335752120d4ef509d27e97",
-      "bytes": 524427,
+      "sha256": "793e8b015b456effe5fe8d9cf1ee1d231e3d78b652cff4c29ba29ce6731e62d5",
+      "bytes": 676213,
       "width": 1568,
       "height": 931,
       "bit_depth": 8,
@@ -139,8 +157,8 @@
     },
     {
       "path": "wood/height.png",
-      "sha256": "875225f6616b89c106471b2f10e114adcd2cb03495e5950a40baf7f3a212c66e",
-      "bytes": 1875871,
+      "sha256": "2af5be12379cc214cf52de1a33958189f0704785266d8ad7bb764c1d043180ce",
+      "bytes": 1571450,
       "width": 1024,
       "height": 1024,
       "bit_depth": 16,
@@ -148,43 +166,54 @@
     },
     {
       "path": "wood/material.sbs",
-      "sha256": "0c1126cf099aa82372434784b8a410048126236180e8e6e847a62d37ef31ae0a",
-      "bytes": 15116,
-      "nodes": 24,
+      "sha256": "5a696c29c6aba87be162344135aa2448b22af38be33aead99d3d8f3c5ee6816b",
+      "bytes": 22048,
+      "nodes": 35,
       "dependencies": [
         "sbs://wood_fibers_1.sbs",
         "sbs://grunge_leaky_paint.sbs",
-        "sbs://noise_directional_scratches.sbs"
+        "sbs://noise_directional_scratches.sbs",
+        "sbs://shape.sbs",
+        "sbs://grunge_map_007.sbs"
       ]
     },
     {
       "path": "wood/material.sbsar",
-      "sha256": "a16591892fca0a1b65c0d1bef35effe341ad16a6e806a96e43761400de3e10a5",
-      "bytes": 4369,
+      "sha256": "0456340129347218fd6e41cc7a28f69f27f3b5cf8ff5d5956b20d1fc742ff24b",
+      "bytes": 9405,
       "container": "native SBSAR / 7z"
     },
     {
       "path": "wood/metallic.png",
-      "sha256": "df6704f51dd27ff6061ed65b4cda8d16ed20e834fb69621cbb3914bf6acf3a7c",
-      "bytes": 14798,
+      "sha256": "1ff3aad65cd2d6b5b1808100e9f61d346f6af2106a93f7929c99dfd6610e88a1",
+      "bytes": 5641,
       "width": 1024,
       "height": 1024,
       "bit_depth": 8,
-      "color_type": 2
+      "color_type": 0
     },
     {
       "path": "wood/normal.png",
-      "sha256": "00342e8c47f1efc9aeb0dae47cd4d29a54533fca08e2bc3f254e58062bb16a28",
-      "bytes": 7529529,
+      "sha256": "009133d8a29372a94419549193b5eb89d807184c14b09074c0664acb8fbe0cab",
+      "bytes": 6576144,
       "width": 1024,
       "height": 1024,
       "bit_depth": 16,
       "color_type": 6
     },
     {
+      "path": "wood/paintMask.png",
+      "sha256": "3dc291268a817daa9734df8b99158ae766b8ef5fdabd15abc521a2522e1ded79",
+      "bytes": 600606,
+      "width": 1024,
+      "height": 1024,
+      "bit_depth": 16,
+      "color_type": 0
+    },
+    {
       "path": "wood/roughness.png",
-      "sha256": "8f0c09ba284df0d20e427e75465c9acdb1f943ec5f9da1fbfb27f96b7a323e17",
-      "bytes": 516216,
+      "sha256": "fde317cbc8aefa70bfd7344588d474d13cf19faf36b2a37fb36599fff077973f",
+      "bytes": 466292,
       "width": 1024,
       "height": 1024,
       "bit_depth": 8,
@@ -192,8 +221,8 @@
     },
     {
       "path": "wood/scratchMask.png",
-      "sha256": "ce7a42cc3b5497a077397c01d31af3118b89dc30eba38dd69e6584d8a0d525c7",
-      "bytes": 145192,
+      "sha256": "06684f015dd5d651e7d44eae0765762233e367b244514fdce3ffd4afb028878f",
+      "bytes": 167390,
       "width": 1024,
       "height": 1024,
       "bit_depth": 16,

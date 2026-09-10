@@ -17,7 +17,7 @@ the SD graphs. Their exported PBR maps drive the Blender materials.
 
 **Complete material graphs — unretouched Designer screenshots:**
 
-| Painted wood: 24 nodes | Rusted steel: 27 nodes |
+| Painted wood: 35 nodes | Rusted steel: 32 nodes |
 | --- | --- |
 | ![Complete painted-wood and scratch workflow](docs/showcase/crate-lookdev/wood/designer-graph.png) | ![Complete rust and metal-scratch workflow](docs/showcase/crate-lookdev/steel/designer-graph.png) |
 

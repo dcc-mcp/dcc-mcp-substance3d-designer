@@ -2,13 +2,8 @@
   "blender_version": "5.2.0 LTS",
   "reopened_and_rendered": true,
   "nominal_length_m": 2.0,
-  "lid_dimensions_m": [
-    2.0002992153167725,
-    0.19507572054862976,
-    0.07628915458917618
-  ],
-  "crate_mesh_count": 87,
-  "uv_mesh_count": 87,
+  "crate_mesh_count": 119,
+  "uv_mesh_count": 119,
   "render_engine": "CYCLES",
   "samples": 96,
   "resolution": [
@@ -37,11 +32,43 @@
         "height.png": {
           "packed_bytes_match_export": true,
           "color_space": "Non-Color"
+        },
+        "bareWoodColor.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "sRGB"
         }
       },
-      "normal_strength": 0.8500000238418579,
-      "bump_distance_m": 0.004000000189989805,
-      "bump_strength": 0.6000000238418579
+      "normal_strength": 0.5,
+      "bump_distance_m": 0.004999999888241291,
+      "bump_strength": 0.5199999809265137,
+      "base_color_blend": "Geometry recess mask blends SD painted and bare-wood colors"
+    },
+    "SD_BareWood": {
+      "maps": {
+        "bareWoodColor.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "sRGB"
+        },
+        "roughness.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "metallic.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "normal.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "height.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        }
+      },
+      "normal_strength": 0.5,
+      "bump_distance_m": 0.004999999888241291,
+      "bump_strength": 0.5199999809265137
     },
     "SD_RustedSteel": {
       "maps": {
@@ -66,46 +93,82 @@
           "color_space": "Non-Color"
         }
       },
-      "normal_strength": 0.6499999761581421,
-      "bump_distance_m": 0.001500000013038516,
-      "bump_strength": 0.5
+      "normal_strength": 0.550000011920929,
+      "bump_distance_m": 0.0012000000569969416,
+      "bump_strength": 0.41999998688697815
+    },
+    "SD_WornSteel": {
+      "maps": {
+        "bareSteelColor.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "sRGB"
+        },
+        "roughness.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "metallic.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "normal.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        },
+        "height.png": {
+          "packed_bytes_match_export": true,
+          "color_space": "Non-Color"
+        }
+      },
+      "normal_strength": 0.550000011920929,
+      "bump_distance_m": 0.0012000000569969416,
+      "bump_strength": 0.41999998688697815
     }
   },
+  "crate_bounds_m": [
+    2.052000045776367,
+    1.5268184542655945,
+    1.2035071067512035
+  ],
+  "packed_image_count": 12,
+  "sculpted_gouge_depth_m": 0.017,
+  "painted_wood_graph_nodes": 35,
+  "steel_graph_nodes": 32,
   "designer_reopen": {
     "wood": {
       "reopened": true,
-      "node_count": 24
+      "node_count": 35
     },
     "steel": {
       "reopened": true,
-      "node_count": 27
+      "node_count": 32
     }
   },
   "designer_recompute_pixel_deltas": {
     "wood": {
       "baseColor": {
         "bit_depth": 8,
-        "max_lsb_delta": 1,
-        "mean_lsb_delta": 9.218851725260416e-06,
-        "changed_fraction": 9.218851725260416e-06
+        "max_lsb_delta": 15,
+        "mean_lsb_delta": 6.580352783203125e-05,
+        "changed_fraction": 3.528594970703125e-05
       },
       "height": {
         "bit_depth": 16,
-        "max_lsb_delta": 21,
-        "mean_lsb_delta": 0.004353523254394531,
-        "changed_fraction": 0.0033407211303710938
+        "max_lsb_delta": 1940,
+        "mean_lsb_delta": 0.011864662170410156,
+        "changed_fraction": 0.001064300537109375
       },
       "normal": {
         "bit_depth": 16,
-        "max_lsb_delta": 31,
-        "mean_lsb_delta": 0.007534980773925781,
-        "changed_fraction": 0.004599571228027344
+        "max_lsb_delta": 8343,
+        "mean_lsb_delta": 0.04820704460144043,
+        "changed_fraction": 0.0016903877258300781
       },
       "roughness": {
         "bit_depth": 8,
-        "max_lsb_delta": 1,
-        "mean_lsb_delta": 3.337860107421875e-05,
-        "changed_fraction": 3.337860107421875e-05
+        "max_lsb_delta": 11,
+        "mean_lsb_delta": 7.82012939453125e-05,
+        "changed_fraction": 3.814697265625e-05
       },
       "metallic": {
         "bit_depth": 8,
@@ -118,34 +181,34 @@
       "baseColor": {
         "bit_depth": 8,
         "max_lsb_delta": 1,
-        "mean_lsb_delta": 1.9391377766927082e-05,
-        "changed_fraction": 1.9391377766927082e-05
+        "mean_lsb_delta": 5.5948893229166664e-05,
+        "changed_fraction": 5.5948893229166664e-05
       },
       "height": {
         "bit_depth": 16,
-        "max_lsb_delta": 108,
-        "mean_lsb_delta": 0.007159233093261719,
-        "changed_fraction": 0.0021944046020507812
+        "max_lsb_delta": 52,
+        "mean_lsb_delta": 0.0075130462646484375,
+        "changed_fraction": 0.004192352294921875
       },
       "normal": {
         "bit_depth": 16,
-        "max_lsb_delta": 183,
-        "mean_lsb_delta": 0.0157623291015625,
-        "changed_fraction": 0.0036733150482177734
+        "max_lsb_delta": 279,
+        "mean_lsb_delta": 0.0408475399017334,
+        "changed_fraction": 0.007630348205566406
       },
       "roughness": {
         "bit_depth": 8,
         "max_lsb_delta": 1,
-        "mean_lsb_delta": 5.91278076171875e-05,
-        "changed_fraction": 5.91278076171875e-05
+        "mean_lsb_delta": 6.008148193359375e-05,
+        "changed_fraction": 6.008148193359375e-05
       },
       "metallic": {
         "bit_depth": 8,
         "max_lsb_delta": 2,
-        "mean_lsb_delta": 0.00014400482177734375,
-        "changed_fraction": 0.0001430511474609375
+        "mean_lsb_delta": 0.000152587890625,
+        "changed_fraction": 0.000148773193359375
       }
     }
   },
-  "recompute_note": "Reopened SD graphs recompute successfully. Pixel values can vary slightly; this is not byte-identical determinism."
+  "recompute_note": "Native SD graphs reopen and recompute. Small boundary differences are recorded; byte-identical determinism is not claimed."
 }

@@ -9,11 +9,19 @@ from .graph_inspection import checked_graph, find_in_graph, graph_identity, prop
 
 
 def edge(connection: Any) -> tuple[str, str, str, str]:
+    output_node, output = connection.getOutputPropertyNode(), connection.getOutputProperty()
+    input_node, input_ = connection.getInputPropertyNode(), connection.getInputProperty()
+    # Designer 16 can report these endpoint getters in connection-relative
+    # order. Property categories identify the actual producer and consumer.
+    output_category = api.value(api.value(output, "getCategory"), "name")
+    input_category = api.value(api.value(input_, "getCategory"), "name")
+    if output_category == "Input" and input_category == "Output":
+        output_node, output, input_node, input_ = input_node, input_, output_node, output
     return (
-        api.node_identifier(connection.getOutputPropertyNode()),
-        connection.getOutputProperty().getId(),
-        api.node_identifier(connection.getInputPropertyNode()),
-        connection.getInputProperty().getId(),
+        api.node_identifier(output_node),
+        output.getId(),
+        api.node_identifier(input_node),
+        input_.getId(),
     )
 
 
@@ -71,7 +79,10 @@ def validate_connection(
     source, output, target, input_ = _ports(graph, source_node, source_property, target_node, target_property)
     if not output.isConnectable() or not input_.isConnectable():
         raise api.GraphAuthoringError("Both properties must be connectable", "PORT_NOT_CONNECTABLE")
-    if input_.isReadOnly():
+    # Designer texture inputs are value-read-only: pixels come from an edge,
+    # rather than an assignable SDValue. isConnectable governs their wiring.
+    texture_input = any(item["id"] == "SDTypeTexture" for item in property_types(input_))
+    if input_.isReadOnly() and not texture_input:
         raise api.GraphAuthoringError("Target input is read-only", "PROPERTY_READ_ONLY")
     if not _compatible(output, input_):
         raise api.GraphAuthoringError("Port types are incompatible without conversion", "PORT_TYPE_MISMATCH")
@@ -122,8 +133,10 @@ def disconnect_nodes(
     graph = checked_graph(expected_graph_uid)
     source, output, target, input_ = _ports(graph, source_node, source_property, target_node, target_property)
     requested = (source_node, source_property, target_node, target_property)
+    # Input-side handles can be connection-relative in Designer 16 and fail
+    # disconnect() with ItemNotFound. Use the producer's exact edge handle.
     matches = [
-        connection for connection in api.items(target.getPropertyConnections(input_)) if edge(connection) == requested
+        connection for connection in api.items(source.getPropertyConnections(output)) if edge(connection) == requested
     ]
     if len(matches) > 1:
         raise api.GraphAuthoringError("Connection identity is ambiguous", "AMBIGUOUS_CONNECTION")

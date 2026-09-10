@@ -212,6 +212,30 @@ def test_disconnect_requires_observed_removal(graph, monkeypatch):
     assert result["error"] == "DISCONNECT_READBACK_FAILED"
 
 
+def test_disconnect_uses_producer_handle_with_connection_relative_input_view(graph, monkeypatch):
+    source, target, third = graph.getNodes()
+    connections.connect_nodes("100", "out", "200", "in", "graph-A")
+    connections.connect_nodes("100", "out", "300", "in", "graph-A")
+    original = target.getPropertyConnections
+
+    def input_view(prop):
+        return [
+            SimpleNamespace(
+                getOutputPropertyNode=lambda e=e: e.target,
+                getOutputProperty=lambda e=e: e.input,
+                getInputPropertyNode=lambda e=e: e.source,
+                getInputProperty=lambda e=e: e.output,
+            )
+            for e in original(prop)
+        ]
+
+    monkeypatch.setattr(target, "getPropertyConnections", input_view)
+    assert connections.connect_nodes("100", "out", "200", "in", "graph-A")["already_connected"]
+    assert connections.disconnect_nodes("100", "out", "200", "in", "graph-A")["disconnected"]
+    assert not target.edges
+    assert [connections.edge(e) for e in source.edges] == [("100", "out", "300", "in")]
+
+
 @pytest.mark.parametrize(
     "operation,args",
     [
@@ -226,6 +250,27 @@ def test_changed_graph_context_rejects_mutations(graph, operation, args):
     assert result["error"] == "GRAPH_CONTEXT_CHANGED"
     assert len(graph.getNodes()) == 3
     assert all(not node.writes and not node.edges for node in graph.getNodes())
+
+
+def test_value_readonly_texture_input_accepts_and_verifies_connection(graph):
+    source, target = graph.getNodes()[:2]
+    source.outputs[0].type_id = "SDTypeTexture"
+    target.inputs[0].type_id = "SDTypeTexture"
+    target.inputs[0].readonly = True
+    result = connections.connect_nodes("100", "out", "200", "in", "graph-A")
+    assert result["target_node"] == "200"
+    assert len(target.getPropertyConnections(target.inputs[0])) == 1
+
+
+def test_connection_relative_getters_are_normalized_by_property_category(graph):
+    source, target = graph.getNodes()[:2]
+    reverse = SimpleNamespace(
+        getOutputPropertyNode=lambda: target,
+        getOutputProperty=lambda: target.inputs[0],
+        getInputPropertyNode=lambda: source,
+        getInputProperty=lambda: source.outputs[0],
+    )
+    assert connections.edge(reverse) == ("100", "out", "200", "in")
 
 
 def test_native_numeric_ids_and_property_metadata(graph):

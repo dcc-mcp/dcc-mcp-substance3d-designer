@@ -6,10 +6,12 @@
 
 ## Showcase: reference image to Designer materials and Blender lookdev
 
-A Codex-generated reference guided a **2 m wooden crate modeled in Blender**
+A Codex-generated reference guided a **2.2 m wooden crate modeled in Blender**
 with painted wood and rusted steel authored in **Substance 3D Designer 16**.
 Wood scratches, metal scratches and rust are independent procedural layers in
-the SD graphs. Their exported PBR maps drive the Blender materials.
+the SD graphs. Their exported PBR maps drive the Blender materials. Layered
+broken battens combine attached wood fibers with native SD height displacement;
+fine wood grain uses a separate UV layer with consistent physical density.
 
 | Codex-generated reference | Blender Cycles render using SD maps |
 | --- | --- |
@@ -17,12 +19,14 @@ the SD graphs. Their exported PBR maps drive the Blender materials.
 
 **Complete material graphs — unretouched Designer screenshots:**
 
-| Painted wood: 35 nodes | Rusted steel: 32 nodes |
+| Painted wood: 37 nodes | Rusted steel: 35 nodes |
 | --- | --- |
 | ![Complete painted-wood and scratch workflow](docs/showcase/crate-lookdev/wood/designer-graph.png) | ![Complete rust and metal-scratch workflow](docs/showcase/crate-lookdev/steel/designer-graph.png) |
 
 [Blender scene with packed textures](docs/showcase/crate-lookdev/crate.blend) ·
 [Editable SBS, SBSAR, maps and workflow](docs/showcase/crate-lookdev/README.md) ·
+[UV checker](docs/showcase/crate-lookdev/uv-checker.png) ·
+[Broken wood detail](docs/showcase/crate-lookdev/detail.png) ·
 [Earlier color-correction study](docs/showcase/painted-wood/README.md)
 
 The crate is a reference-guided modeling and lookdev study. Its proportions,

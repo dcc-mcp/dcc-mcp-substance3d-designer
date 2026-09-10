@@ -5,11 +5,166 @@ import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
+import pytest
 import yaml
+
+from dcc_mcp_substance3d_designer import graph_authoring
 
 SCRIPTS = (
     Path(__file__).parent.parent / "src" / "dcc_mcp_substance3d_designer" / "skills" / "designer-session" / "scripts"
 )
+
+
+def test_native_read_only_identifier_is_returned_and_resolves(monkeypatch):
+    labels = {}
+    node = SimpleNamespace(
+        getIdentifier=lambda: "1581078951",
+        getProperties=lambda _: [],
+        newProperty=lambda *args: None,
+        setAnnotationPropertyValueFromId=lambda name, val: labels.update({name: val}),
+        setPosition=lambda pos: None,
+    )
+    graph = SimpleNamespace(newNode=lambda _: node, getNodes=lambda: [node])
+    monkeypatch.setattr(graph_authoring, "active_graph", lambda: graph)
+    monkeypatch.setitem(sys.modules, "sd.api.sdbasetypes", SimpleNamespace(float2=lambda *v: v))
+    monkeypatch.setitem(
+        sys.modules, "sd.api.sdproperty", SimpleNamespace(SDPropertyCategory=SimpleNamespace(Annotation="annotation"))
+    )
+    monkeypatch.setitem(
+        sys.modules, "sd.api.sdtypestring", SimpleNamespace(SDTypeString=SimpleNamespace(sNew=lambda: "string"))
+    )
+    monkeypatch.setitem(
+        sys.modules, "sd.api.sdvaluestring", SimpleNamespace(SDValueString=SimpleNamespace(sNew=lambda v: v))
+    )
+    result = graph_authoring.create_node("sbs::compositing::uniform", "wood")
+    assert result["node_id"] == "1581078951"
+    assert labels == {}
+    assert result["requested_node_id"] == "wood"
+    assert result["identifier_assigned"] is False
+    assert graph_authoring.find_node(result["node_id"]) is node
+
+
+def test_failed_node_setup_removes_only_created_node(monkeypatch):
+    deleted = []
+
+    def fail(_):
+        raise RuntimeError("position rejected")
+
+    node = SimpleNamespace(getIdentifier=lambda: "123", setPosition=fail)
+    graph = SimpleNamespace(newNode=lambda _: node, deleteNode=deleted.append)
+    monkeypatch.setattr(graph_authoring, "active_graph", lambda: graph)
+    monkeypatch.setitem(sys.modules, "sd.api.sdbasetypes", SimpleNamespace(float2=lambda *v: v))
+    with pytest.raises(RuntimeError, match="position rejected"):
+        graph_authoring.create_node("sbs::compositing::uniform")
+    assert deleted == [node]
+
+
+def test_native_render_validates_ports_and_preserves_existing_exports(monkeypatch, tmp_path):
+    script = _load_script("render_graph_maps")
+    mutations = []
+    texture = SimpleNamespace(
+        save=lambda path: Path(path).write_bytes(b"fresh texture"), getSize=lambda: SimpleNamespace(x=512, y=512)
+    )
+    node = SimpleNamespace(
+        getProperties=lambda _: [SimpleNamespace(getId=lambda: "out")],
+        getPropertyValueFromId=lambda *args: SimpleNamespace(get=lambda: texture),
+    )
+    graph = SimpleNamespace(
+        getNodes=lambda: [node],
+        getPropertyFromId=lambda *args: "size_property",
+        setPropertyInheritanceMethod=lambda prop, mode: mutations.append("absolute"),
+        setInputPropertyValueFromId=lambda *args: mutations.append("resize"),
+        compute=lambda: mutations.append("compute"),
+    )
+    monkeypatch.setattr(script, "active_graph", lambda: graph)
+    monkeypatch.setattr(script, "find_node", lambda _: node)
+    monkeypatch.setitem(
+        sys.modules,
+        "sd.api.sdproperty",
+        SimpleNamespace(
+            SDPropertyCategory=SimpleNamespace(Output=1, Input=0),
+            SDPropertyInheritanceMethod=SimpleNamespace(Absolute=2),
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "sd.api.sdbasetypes", SimpleNamespace(int2=lambda *v: v))
+    monkeypatch.setitem(
+        sys.modules, "sd.api.sdvalueint2", SimpleNamespace(SDValueInt2=SimpleNamespace(sNew=lambda v: v))
+    )
+    outputs = [{"name": "height", "node_id": "123", "property": "missing"}]
+    with pytest.raises(graph_authoring.GraphAuthoringError, match="port not found"):
+        script.render_graph_maps(str(tmp_path / "new"), outputs)
+    assert mutations == []
+    outputs[0]["property"] = "out"
+    with pytest.raises(graph_authoring.GraphAuthoringError, match="new output directory"):
+        script.render_graph_maps(str(tmp_path), outputs)
+    assert mutations == []
+    result = script.render_graph_maps(str(tmp_path / "new"), outputs, 512)
+    assert mutations == ["absolute", "resize", "compute"]
+    assert Path(result["files"][0]["path"]).read_bytes() == b"fresh texture"
+    assert len(result["files"][0]["sha256"]) == 64
+    with pytest.raises(graph_authoring.GraphAuthoringError, match="requested resolution"):
+        script.render_graph_maps(str(tmp_path / "wrong_size"), outputs, 1024)
+    assert list((tmp_path / "wrong_size").iterdir()) == []
+
+
+def test_select_graph_requires_exact_loaded_package(monkeypatch, tmp_path):
+    script = _load_script("select_graph")
+    opened = []
+    graph = SimpleNamespace(getNodes=lambda: [])
+    path = tmp_path / "material.sbs"
+    package = SimpleNamespace(
+        getFilePath=lambda: str(path), findResourceFromUrl=lambda name: graph if name == "wood" else None
+    )
+    app = SimpleNamespace(
+        getPackageMgr=lambda: SimpleNamespace(getUserPackages=lambda: [package]),
+        getUIMgr=lambda: SimpleNamespace(openResourceInEditor=opened.append),
+    )
+    monkeypatch.setattr(script, "application", lambda: app)
+    with pytest.raises(graph_authoring.GraphAuthoringError, match="loaded package"):
+        script.select_graph(str(tmp_path / "other.sbs"), "wood")
+    with pytest.raises(graph_authoring.GraphAuthoringError, match="Graph not found"):
+        script.select_graph(str(path), "missing")
+    assert opened == []
+    assert script.select_graph(str(path), "wood")["graph_id"] == "wood"
+    assert opened == [graph]
+
+
+@pytest.mark.parametrize("package", ["../noise.sbs", "C:/noise.sbs", "noise.sbsar", "https://noise.sbs"])
+def test_resource_node_rejects_non_shipped_paths_before_sdk(package):
+    result = _load_script("create_resource_node").main(package_name=package, resource_id="noise", node_id="noise")
+    assert not result["success"]
+    assert result["error"] == "INVALID_PACKAGE_NAME"
+
+
+def test_rgba_color_uses_color_sdk_type_and_readback(monkeypatch):
+    from collections import namedtuple
+
+    color = namedtuple("ColorRGBA", "r g b a")
+    monkeypatch.setitem(sys.modules, "sd.api.sdbasetypes", SimpleNamespace(ColorRGBA=color))
+    monkeypatch.setitem(
+        sys.modules, "sd.api.sdvaluecolorrgba", SimpleNamespace(SDValueColorRGBA=SimpleNamespace(sNew=lambda v: v))
+    )
+    value = graph_authoring.typed_value("colorrgba", [0.1, 0.2, 0.3, 1.0])
+    assert graph_authoring.json_value(value) == [0.1, 0.2, 0.3, 1.0]
+
+
+def test_sdk_base_exception_is_failure_but_interrupt_still_propagates(monkeypatch):
+    from dcc_mcp_substance3d_designer.skill_support import typed_result
+
+    class APIException(BaseException):
+        pass
+
+    monkeypatch.setitem(sys.modules, "sd.api.apiexception", SimpleNamespace(APIException=APIException))
+
+    def fail(error):
+        raise error
+
+    result = typed_result("operation", fail, APIException("sensitive host details"))
+    assert not result["success"]
+    assert result["error"] == "SDK_API_ERROR:Unknown"
+    assert "sensitive" not in str(result)
+    with pytest.raises(KeyboardInterrupt):
+        typed_result("operation", fail, KeyboardInterrupt())
 
 
 def _load_script(name: str):
@@ -225,7 +380,9 @@ def test_create_node_uses_bounded_type_url_and_active_graph(monkeypatch):
 
     assert result["success"] is True
     assert result["context"] == {
-        "node_id": "generated",
+        "node_id": "uniform_color",
+        "requested_node_id": "uniform_color",
+        "identifier_assigned": True,
         "type_url": "sbs::compositing::uniform",
         "position": [10.0, 20.0],
     }
@@ -350,24 +507,24 @@ def test_typed_public_calls_build_and_verify_a_small_graph(monkeypatch):
         position=[0, 0],
     )["success"]
     assert _load_script("connect_nodes").main(
-        source_node="node_0",
+        source_node="noise",
         source_property="unique_filter_output",
-        target_node="node_1",
+        target_node="blend",
         target_property="foreground",
     )["success"]
-    assert _load_script("set_parameter").main(node_id="node_0", parameter="scale", value_type="float", value=4.0)[
+    assert _load_script("set_parameter").main(node_id="noise", parameter="scale", value_type="float", value=4.0)[
         "success"
     ]
-    assert not _load_script("expose_parameter").main(node_id="node_0", parameter="scale", exposed_id="noise_scale")[
+    assert not _load_script("expose_parameter").main(node_id="noise", parameter="scale", exposed_id="noise_scale")[
         "success"
     ]
     assert _load_script("add_output").main(output_id="base_color", position=[200, 0])["success"]
     assert _load_script("set_output_usage").main(
-        node_id="node_2", usage="baseColor", channels="RGBA", color_space="sRGB"
+        node_id="base_color", usage="baseColor", channels="RGBA", color_space="sRGB"
     )["success"]
 
     state = _load_script("export_graph_state").main(include_parameters=True)
     assert state["success"] is True
     assert state["context"]["graph"]["node_count"] == 3
-    assert state["context"]["graph"]["connections"][0]["target_node"] == "node_1"
+    assert state["context"]["graph"]["connections"][0]["target_node"] == "blend"
     assert state["context"]["graph"]["outputs"][0]["usages"][0]["usage"] == "baseColor"

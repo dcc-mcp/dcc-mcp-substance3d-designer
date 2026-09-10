@@ -136,6 +136,19 @@ def require_node_id(identifier: str, label: str = "node_id") -> str:
     return identifier
 
 
+def name_node(node: Any, name: str) -> bool:
+    """Assign an identifier only on SDKs that expose a writable identifier.
+
+    Compositing nodes have read-only native IDs. Their annotation properties
+    are not arbitrary user metadata, so never invent a label property.
+    """
+    setter = getattr(node, "setIdentifier", None)
+    if callable(setter):
+        setter(name)
+        return True
+    return False
+
+
 def create_node(
     type_url: str,
     node_id: str | None = None,
@@ -160,12 +173,15 @@ def create_node(
     if node is None:
         raise GraphAuthoringError("Designer rejected the requested node type", "NODE_TYPE_UNAVAILABLE")
     try:
-        if resolved_id is not None:
-            from sd.api.sdvaluestring import SDValueString
-
-            node.setAnnotationPropertyValueFromId("label", SDValueString.sNew(resolved_id))
+        assigned = name_node(node, resolved_id) if resolved_id is not None else False
         node.setPosition(float2(*xy))
-        return {"node_id": node_identifier(node), "type_url": resolved_type, "position": xy}
+        return {
+            "node_id": node_identifier(node),
+            "type_url": resolved_type,
+            "position": xy,
+            "requested_node_id": resolved_id,
+            "identifier_assigned": assigned,
+        }
     except BaseException:
         graph.deleteNode(node)
         raise
@@ -283,6 +299,7 @@ def typed_value(value_type: str, raw: Any) -> Any:
 
         return SDValueString.sNew(raw)
     vector_specs = {
+        "colorrgba": (4, "ColorRGBA", "SDValueColorRGBA", "sd.api.sdvaluecolorrgba"),
         "color": (4, "ColorRGBA", "SDValueColorRGBA", "sd.api.sdvaluecolorrgba"),
         "int2": (2, "int2", "SDValueInt2", "sd.api.sdvalueint2"),
         "float2": (2, "float2", "SDValueFloat2", "sd.api.sdvaluefloat2"),

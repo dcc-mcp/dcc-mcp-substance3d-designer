@@ -45,7 +45,7 @@ def _json_value(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _json_value(item) for key, item in value.items()}
     components = []
-    for name in ("x", "y", "z", "w"):
+    for name in ("r", "g", "b", "a") if hasattr(value, "r") else ("x", "y", "z", "w"):
         component = _value(value, name)
         if component is None:
             break

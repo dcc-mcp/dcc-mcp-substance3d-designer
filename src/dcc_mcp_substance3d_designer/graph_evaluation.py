@@ -27,6 +27,12 @@ def export_native_maps(
     graph = checked_graph(expected_graph_uid)
     selected, names = [], set()
     for item in outputs:
+        if not isinstance(item, dict) or not all(
+            isinstance(item.get(key), str) for key in ("name", "node_id", "property")
+        ):
+            raise api.GraphAuthoringError(
+                "Each output requires name, node_id, and property strings", "INVALID_GRAPH_OUTPUTS"
+            )
         name = api.require_identifier(item["name"])
         if name.casefold() in names:
             raise api.GraphAuthoringError("Output names must be unique", "INVALID_GRAPH_OUTPUTS")
@@ -37,30 +43,57 @@ def export_native_maps(
             raise api.GraphAuthoringError("Selected output property is missing", "PORT_NOT_FOUND")
         selected.append((name, node, prop))
     destination = Path(output_dir).expanduser().resolve()
-    if destination.exists():
+    if destination.exists() or destination.is_symlink():
         raise api.GraphAuthoringError("Use a fresh output directory", "OUTPUT_EXISTS")
     evaluate_graph(expected_graph_uid, 128, max_resolution)
-    destination.mkdir(parents=True)
-    files = []
+    textures = []
     for name, node, prop in selected:
         wrapped = node.getPropertyValue(prop)
         texture = wrapped.get() if wrapped else None
         if texture is None:
-            raise api.GraphAuthoringError("Selected texture did not compute", "OUTPUT_NOT_COMPUTED")
+            raise api.GraphAuthoringError(
+                f"Output {name} ({api.node_identifier(node)}.{prop.getId()}) did not compute. "
+                "Select the graph output node when an intermediate texture is unavailable.",
+                "OUTPUT_NOT_COMPUTED",
+            )
         size = texture.getSize()
         if not 0 < size.x <= max_resolution or not 0 < size.y <= max_resolution:
             raise api.GraphAuthoringError("Texture exceeds the resolution budget", "RESOLUTION_LIMIT")
-        path = destination / (name + ".png")
-        if texture.save(str(path)) is False or not path.is_file() or not path.stat().st_size:
-            raise api.GraphAuthoringError("SDK did not save the texture", "MAP_OUTPUT_MISSING")
-        metadata = read_image_metadata(path, "png", None)
-        if (metadata["width"], metadata["height"]) != (size.x, size.y):
-            raise api.GraphAuthoringError("Saved texture dimensions do not match SDK readback", "MAP_HEADER_INVALID")
-        digest = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-        files.append({"name": name, "path": str(path), "sha256": digest.hexdigest(), "image_metadata": metadata})
+        textures.append((name, node, prop, texture, size))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    files = []
+    # Validate all files in owned storage before publishing the directory.
+    with tempfile.TemporaryDirectory(prefix=".designer-maps-", dir=destination.parent) as temporary:
+        staging = Path(temporary) / "maps"
+        staging.mkdir()
+        for name, node, prop, texture, size in textures:
+            path = staging / (name + ".png")
+            if texture.save(str(path)) is False or not path.is_file() or not path.stat().st_size:
+                raise api.GraphAuthoringError(f"SDK did not save output {name}", "MAP_OUTPUT_MISSING")
+            metadata = read_image_metadata(path, "png", None)
+            if (metadata["width"], metadata["height"]) != (size.x, size.y):
+                raise api.GraphAuthoringError(
+                    f"Saved output {name} dimensions do not match SDK readback", "MAP_HEADER_INVALID"
+                )
+            digest = hashlib.sha256()
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            pixel_format = texture.getPixelFormat()
+            files.append(
+                {
+                    "name": name,
+                    "node_id": api.node_identifier(node),
+                    "property": prop.getId(),
+                    "pixel_format": str(getattr(pixel_format, "name", pixel_format)),
+                    "path": str(destination / path.name),
+                    "sha256": digest.hexdigest(),
+                    "image_metadata": metadata,
+                }
+            )
+        if destination.exists() or destination.is_symlink():
+            raise api.GraphAuthoringError("Use a fresh output directory", "OUTPUT_EXISTS")
+        staging.rename(destination)
     return {
         "graph_uid": expected_graph_uid,
         "files": files,

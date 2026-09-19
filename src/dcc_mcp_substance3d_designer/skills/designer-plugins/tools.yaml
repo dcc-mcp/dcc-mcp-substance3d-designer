@@ -1,0 +1,133 @@
+tools:
+- name: list_node_modules
+  description: 'Group the available Designer node definitions into their owning module
+    namespaces with counts. Read-only discovery of the plugin surface.'
+  input_schema:
+    type: object
+    additionalProperties: false
+    properties:
+      query:
+        type: string
+        maxLength: 128
+        default: ''
+      offset:
+        type: integer
+        minimum: 0
+        default: 0
+      limit:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 100
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      context:
+        type: object
+  read_only: true
+  destructive: false
+  idempotent: true
+  execution: sync
+  affinity: main
+  timeout_hint_secs: 30
+  source_file: scripts/list_node_modules.py
+  annotations:
+    read_only_hint: true
+    destructive_hint: false
+    idempotent_hint: true
+  call_examples:
+  - arguments:
+      limit: 100
+    note: Discover which node module namespaces this Designer build provides.
+- name: describe_node_module
+  description: 'List the node definitions owned by one module namespace, optionally
+    filtered by a case-insensitive query. Read-only.'
+  input_schema:
+    type: object
+    additionalProperties: false
+    required:
+    - module
+    properties:
+      module:
+        type: string
+        maxLength: 256
+        description: 'Module namespace, for example sbs::compositing.'
+      query:
+        type: string
+        maxLength: 128
+        default: ''
+      offset:
+        type: integer
+        minimum: 0
+        default: 0
+      limit:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 100
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      context:
+        type: object
+  read_only: true
+  destructive: false
+  idempotent: true
+  execution: sync
+  affinity: main
+  timeout_hint_secs: 30
+  source_file: scripts/describe_node_module.py
+  annotations:
+    read_only_hint: true
+    destructive_hint: false
+    idempotent_hint: true
+  call_examples:
+  - arguments:
+      module: sbs::compositing
+      query: blur
+      limit: 20
+    note: Find blur-related node definitions in the compositing module.
+- name: module_capabilities
+  description: 'Read-only attribute probe reporting which module-manager and SDK APIs
+    this Designer build advertises. A missing API is reported as false, not an error.'
+  input_schema:
+    type: object
+    additionalProperties: false
+    properties: {}
+  output_schema:
+    type: object
+    required:
+    - success
+    - message
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      context:
+        type: object
+  read_only: true
+  destructive: false
+  idempotent: true
+  execution: sync
+  affinity: main
+  timeout_hint_secs: 30
+  source_file: scripts/module_capabilities.py
+  annotations:
+    read_only_hint: true
+    destructive_hint: false
+    idempotent_hint: true

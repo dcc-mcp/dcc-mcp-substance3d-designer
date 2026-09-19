@@ -30,6 +30,12 @@ maps from a height or mask field. Those maps encode surface response that a
 downstream renderer (Blender, Unreal, Maya, Houdini) consumes when it performs
 the actual lighting. Use this skill to author those maps, not to light a scene.
 
+This skill is **experimental**: recipe availability is a runtime property, not a
+documented guarantee. The 6 lighting recipes resolve against the live
+node-definition inventory at call time, so treat the `available` flag reported
+by `list_light_recipes` as the only source of truth for whether a recipe exists
+in the running Designer build. Never assume a recipe name implies a node type.
+
 ## Recipes resolve against the live inventory
 
 Node type URLs vary between Designer builds. Run `list_light_recipes` first: it

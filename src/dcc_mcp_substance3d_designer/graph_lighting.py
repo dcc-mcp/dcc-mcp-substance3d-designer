@@ -15,7 +15,7 @@ from typing import Any
 from . import graph_authoring as api
 from . import graph_recipes as recipes
 from .graph_connections import connect_nodes
-from .graph_effects import _remove_created, primary_input, primary_output
+from .graph_effects import primary_input, primary_output
 from .graph_evaluation import export_native_maps
 from .graph_inspection import checked_graph, graph_identity
 
@@ -88,7 +88,7 @@ def bake_lighting_maps(
             max_resolution,
         )
     except BaseException:
-        _remove_created(graph, created)
+        api.remove_created(created)
         raise
 
     return {

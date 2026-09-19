@@ -77,19 +77,6 @@ def _find(graph: Any, node_id: str) -> Any:
     return find_in_graph(graph, node_id)
 
 
-def _remove_created(graph: Any, created: list[Any]) -> None:
-    """Remove only the nodes this call created, newest first.
-
-    Cleanup must never mask the exception that triggered it, and it must never
-    swallow KeyboardInterrupt or SystemExit.
-    """
-    for node in reversed(created):
-        try:
-            api.delete_node(node if isinstance(node, str) else node["node_id"])
-        except Exception:  # noqa: BLE001 - rollback is best effort by design.
-            continue
-
-
 def _connect_or_report(source_node: str, source_property: str, target_node: str, target_property: str) -> bool:
     """Wire one edge when both endpoints are given. Return True when wired."""
     if not target_node or not target_property:
@@ -133,7 +120,7 @@ def apply_effect(
             str(target_property) if target_property else "",
         )
     except BaseException:
-        _remove_created(graph, created_nodes)
+        api.remove_created(created_nodes)
         raise
     return {
         "graph_uid": graph_identity(graph),
@@ -201,7 +188,7 @@ def apply_effect_chain(
             str(target_property) if target_property else "",
         )
     except BaseException:
-        _remove_created(graph, created)
+        api.remove_created(created)
         raise
 
     return {

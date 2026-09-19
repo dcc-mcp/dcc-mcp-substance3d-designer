@@ -29,6 +29,12 @@ compositing or filter node inserted into the graph topology, created and wired
 through the adapter's verified `create_node` and `connect_nodes` primitives.
 There is no viewport effect, no post-process pass, and no shader authoring.
 
+This skill is **experimental**: recipe availability is a runtime property, not a
+documented guarantee. The 7 effect recipes resolve against the live
+node-definition inventory at call time, so treat the `available` flag reported
+by `list_effect_recipes` as the only source of truth for whether a recipe exists
+in the running Designer build. Never assume a recipe name implies a node type.
+
 ## Recipe discovery instead of hardcoded node types
 
 Node type URLs differ between Designer builds. Each recipe declares an ordered

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.7.0...v0.8.0) (2026-09-19)
+
+
+### Features
+
+* add Designer effects, lighting, particles, dynamics, animation, and plugin skills ([#39](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/39)) ([373f2b5](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/373f2b54985cd578658b10641882c09f8f62020a))
+
 ## [0.7.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.6.1...v0.7.0) (2026-09-10)
 
 

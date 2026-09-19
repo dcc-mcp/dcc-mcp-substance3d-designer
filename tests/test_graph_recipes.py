@@ -92,15 +92,6 @@ def _property(identifier, category, type_id="float", connectable=True):
 
 
 def _install_property_module(monkeypatch):
-    """Install the minimal fake SDK modules needed by port discovery."""
-    monkeypatch.setitem(sys.modules, "sd", ModuleType("sd"))
-    monkeypatch.setitem(sys.modules, "sd.api", ModuleType("sd.api"))
-    property_module = ModuleType("sd.api.sdproperty")
-    property_module.SDPropertyCategory = SimpleNamespace(Input="Input", Output="Output")
-    monkeypatch.setitem(sys.modules, "sd.api.sdproperty", property_module)
-
-
-def _install_property_module(monkeypatch):
     """Install the minimal fake SDK modules that port discovery imports."""
     monkeypatch.setitem(sys.modules, "sd", ModuleType("sd"))
     monkeypatch.setitem(sys.modules, "sd.api", ModuleType("sd.api"))
@@ -211,6 +202,47 @@ def test_apply_effect_rolls_back_when_connection_fails(graph, monkeypatch):
         effects.apply_effect(EFFECTS, "blur", "100", "output", target_node="200", target_property="input")
     assert error.value.code == "GRAPH_CYCLE"
     assert len(graph.nodes) == 2
+
+
+def test_apply_effect_rolls_back_when_port_discovery_fails(graph, monkeypatch):
+    """Finding #2: PORT_NOT_FOUND during discovery must not leave the node behind."""
+
+    def no_ports(node):
+        raise api.GraphAuthoringError("Node exposes no connectable input", "PORT_NOT_FOUND")
+
+    monkeypatch.setattr(effects, "primary_input", no_ports)
+    with pytest.raises(api.GraphAuthoringError) as error:
+        effects.apply_effect(EFFECTS, "blur", "100", "output", expected_graph_uid="graph-A")
+    assert error.value.code == "PORT_NOT_FOUND"
+    # The created node was removed from the graph, not just abandoned.
+    assert len(graph.nodes) == 2
+    assert graph.created[0] not in graph.nodes
+
+
+def test_apply_effect_chain_rolls_back_when_final_target_connection_fails(graph, monkeypatch):
+    """Finding #1: the last edge into the optional target is inside the rollback unit.
+
+    The existing mid-chain test only covers connections created inside the loop,
+    so a failure on the final target edge would previously orphan every node.
+    """
+    connect_calls = []
+
+    def fail_on_final_target(source_node, source_property, target_node, target_property):
+        connect_calls.append(target_node)
+        if target_node == "200":
+            raise api.GraphAuthoringError("port not found", "PORT_NOT_FOUND")
+        return None
+
+    monkeypatch.setattr(effects, "connect_nodes", fail_on_final_target)
+    with pytest.raises(api.GraphAuthoringError) as error:
+        effects.apply_effect_chain(
+            EFFECTS, ["warp", "blur"], "100", "output", target_node="200", target_property="input"
+        )
+    assert error.value.code == "PORT_NOT_FOUND"
+    # Both created nodes are removed; only the two originals remain.
+    assert len(graph.nodes) == 2
+    assert all(node not in graph.nodes for node in graph.created)
+    assert connect_calls.count("200") == 1
 
 
 def test_apply_effect_chain_wires_each_step_in_order(graph):

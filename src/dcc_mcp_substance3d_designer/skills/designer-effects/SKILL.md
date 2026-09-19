@@ -40,8 +40,10 @@ inventory actually advertises.
 - A recipe that resolves to nothing fails closed with `RECIPE_UNAVAILABLE` and
   lists the candidates it tried. Nothing is created in that case.
 - `apply_effect_chain` resolves every step before creating any node, so a
-  missing type cannot leave a partial chain behind. If a later step or the final
-  connection fails, the nodes created by that call are removed.
+  missing type cannot leave a partial chain behind. Port lookup, every
+  intermediate connection, the final target connection, and export are all inside
+  one rollback unit: if any of them fails, the nodes created by that call are
+  removed. The same guarantee applies to `apply_effect`.
 
 ## Tool notes
 
@@ -49,8 +51,10 @@ inventory actually advertises.
   `target_property` to wire its output onward; omit them to leave the node
   unwired for manual inspection.
 - `apply_effect_chain` wires `source_node.source_property` into step 1, then each
-  step into the next, then the last step into the optional target. Every
-  intermediate edge uses the node's default `input` and `output` ports.
+  step into the next, then the last step into the optional target. Ports are
+  resolved by discovery, not by a fixed name: texture-typed ports win, then
+  conventionally named ports (`input`/`output`, `source`, `result`), then the
+  first available port. Do not assume a literal `input` or `output` id.
 - Chain length is bounded to 12 steps. `spacing` spaces nodes horizontally in
   native graph coordinates from `origin`.
 - Use `export_graph_state` from `designer-session` after a chain to verify the

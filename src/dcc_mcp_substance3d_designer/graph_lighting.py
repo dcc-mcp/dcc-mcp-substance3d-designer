@@ -15,7 +15,7 @@ from typing import Any
 from . import graph_authoring as api
 from . import graph_recipes as recipes
 from .graph_connections import connect_nodes
-from .graph_effects import primary_input, primary_output
+from .graph_effects import _remove_created, primary_input, primary_output
 from .graph_evaluation import export_native_maps
 from .graph_inspection import checked_graph, graph_identity
 
@@ -76,20 +76,21 @@ def bake_lighting_maps(
                     "output_property": primary_output(_node(graph, node_id)),
                 }
             )
+        # Exporting is part of this call's unit of work: a failed export must not
+        # leave the derived nodes behind.
+        exported = export_native_maps(
+            output_dir,
+            [
+                {"name": item["map"], "node_id": item["node_id"], "property": item["output_property"]}
+                for item in results
+            ],
+            expected_graph_uid,
+            max_resolution,
+        )
     except BaseException:
-        for node_id in reversed(created):
-            try:
-                api.delete_node(node_id)
-            except BaseException:  # noqa: BLE001 - cleanup must not mask the cause.
-                pass
+        _remove_created(graph, created)
         raise
 
-    exported = export_native_maps(
-        output_dir,
-        [{"name": item["map"], "node_id": item["node_id"], "property": item["output_property"]} for item in results],
-        expected_graph_uid,
-        max_resolution,
-    )
     return {
         "graph_uid": graph_identity(graph),
         "source_node": resolved_source,

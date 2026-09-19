@@ -142,4 +142,5 @@ def test_skill_tool_main_rejects_empty_arguments_without_host(skill, tool, monke
         return
     assert result["success"] is False
     assert result["error"]
-    assert "sd" not in sys.modules or sys.modules["sd"] is None or True
+    # Failing closed must not require the Designer host module to be imported.
+    assert "sd" not in sys.modules

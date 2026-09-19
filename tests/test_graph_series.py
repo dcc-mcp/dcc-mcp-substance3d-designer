@@ -192,3 +192,41 @@ def test_compose_atlas_rejects_a_missing_series_directory(tmp_path):
     with pytest.raises(api.GraphAuthoringError) as error:
         series.compose_atlas(str(tmp_path / "nope"), str(tmp_path / "a.png"), "height.png")
     assert error.value.code == "SERIES_DIR_NOT_FOUND"
+
+
+def test_bake_series_reports_that_the_parameter_is_not_restored_on_success(series_graph, tmp_path):
+    """Finding #5: success must not claim the graph was restored."""
+    result = series.bake_animation_frames(str(tmp_path / "frames"), "100", "time", "float", 0, 1, 3, _OUTPUTS, _UID)
+    assert result["parameter_restored"] is False
+    assert result["original_value"] == 0.0
+    assert result["final_value"] == 1.0
+    assert result["values"] == [0.0, 0.5, 1.0]
+
+
+def test_list_animation_parameters_reports_the_real_scanned_count(monkeypatch):
+    """Finding #4: scanned_nodes must be the graph's node count, not the cap."""
+    node = SimpleNamespace(
+        getIdentifier=lambda: "100",
+        getProperties=lambda category: [],
+        getPropertyValue=lambda prop: None,
+        getPropertyConnections=lambda prop: [],
+    )
+    graph = SimpleNamespace(
+        getUID=lambda: _UID,
+        getNodes=lambda: [node] * 5,
+        getProperties=lambda category: [],
+    )
+    monkeypatch.setattr(api, "active_graph", lambda: graph)
+    monkeypatch.setattr(api, "node_identifier", lambda node: "100")
+    monkeypatch.setattr(api, "json_value", lambda value: value)
+    monkeypatch.setitem(sys.modules, "sd", ModuleType("sd"))
+    monkeypatch.setitem(sys.modules, "sd.api", ModuleType("sd.api"))
+    property_module = ModuleType("sd.api.sdproperty")
+    property_module.SDPropertyCategory = SimpleNamespace(Input="Input", Output="Output")
+    monkeypatch.setitem(sys.modules, "sd.api.sdproperty", property_module)
+
+    result = series.list_animation_parameters(_UID, scan_nodes=True, max_nodes=200)
+    # 5 nodes in the graph, so it reports 5 rather than the 200 cap.
+    assert result["scanned_nodes"] == 5
+    assert result["scan_limit"] == 200
+    assert result["scan_truncated"] is False

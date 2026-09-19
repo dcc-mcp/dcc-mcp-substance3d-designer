@@ -21,6 +21,8 @@ from .graph_inspection import checked_graph, graph_identity
 _MAX_STEPS = 64
 _SERIES_VALUE_TYPES = ("float", "int")
 _RESOLUTIONS = (256, 512, 1024, 2048, 4096)
+_MAX_TILE_SIDE = 8192
+_MAX_ATLAS_SIDE = 16384
 
 
 def require_resolution(max_resolution: int) -> int:
@@ -128,7 +130,11 @@ def bake_series(
         "node_id": resolved_node,
         "parameter": resolved_parameter,
         "value_type": resolved_type,
-        "restored_value": original,
+        # The parameter is left at the last swept value on success, and restored
+        # to `original_value` only on failure. The name must not imply otherwise.
+        "original_value": original,
+        "final_value": resolved_values[-1] if resolved_values else original,
+        "parameter_restored": False,
         "output_dir": str(destination),
         "step_count": len(steps),
         "values": resolved_values,
@@ -267,8 +273,11 @@ def list_animation_parameters(
         if time_like(prop.getId())
     ]
     node_inputs = []
+    scanned = 0
     if scan_nodes:
-        for node in api.items(graph.getNodes())[:max_nodes]:
+        nodes = api.items(graph.getNodes())
+        scanned = len(nodes)
+        for node in nodes[:max_nodes]:
             for prop in api.items(node.getProperties(SDPropertyCategory.Input)):
                 if not time_like(prop.getId()):
                     continue
@@ -285,7 +294,10 @@ def list_animation_parameters(
         "graph_uid": graph_identity(graph),
         "graph_inputs": graph_inputs,
         "node_inputs": node_inputs,
-        "scanned_nodes": max_nodes if scan_nodes else 0,
+        # Actual node count in the graph; `max_nodes` is only a scanning cap.
+        "scanned_nodes": scanned,
+        "scan_limit": max_nodes,
+        "scan_truncated": scanned > max_nodes,
         "animation_note": (
             "Designer has no timeline track. These are name-matched candidates for a "
             "frame sweep; confirm the parameter before baking."
@@ -309,7 +321,7 @@ def compose_atlas(
         raise api.GraphAuthoringError("Series directory does not exist", "SERIES_DIR_NOT_FOUND")
 
     try:
-        from PySide2.QtGui import QImage
+        from PySide2.QtGui import QImage, QPainter
     except ImportError as exc:
         raise api.GraphAuthoringError(
             "Atlas composition needs PySide2 QtGui, which Designer provides", "ATLAS_COMPOSER_UNAVAILABLE"
@@ -335,18 +347,29 @@ def compose_atlas(
     rows = int(math.ceil(total / columns))
     tile_width = max(image.width() for _, image in images)
     tile_height = max(image.height() for _, image in images)
-    if not 0 < tile_width <= 8192 or not 0 < tile_height <= 8192:
+    if not 0 < tile_width <= _MAX_TILE_SIDE or not 0 < tile_height <= _MAX_TILE_SIDE:
         raise api.GraphAuthoringError("Series tile size is out of range", "ATLAS_TILE_TOO_LARGE")
+    # Bound the whole allocation, not just one tile: the sweep engine allows 64
+    # steps at up to 4096px, so an unbounded grid can reach several GB.
+    atlas_width, atlas_height = tile_width * columns, tile_height * rows
+    if atlas_width > _MAX_ATLAS_SIDE or atlas_height > _MAX_ATLAS_SIDE:
+        raise api.GraphAuthoringError(
+            f"Atlas {atlas_width}x{atlas_height} exceeds the {_MAX_ATLAS_SIDE}px limit; "
+            "bake fewer steps, a lower resolution, or more columns",
+            "ATLAS_TOO_LARGE",
+        )
 
-    atlas = QImage(tile_width * columns, tile_height * rows, QImage.Format_RGBA8888)
+    atlas = QImage(atlas_width, atlas_height, QImage.Format_RGBA8888)
     atlas.fill(0)
     placed = []
-    for index, (name, image) in enumerate(images):
-        column, row = index % columns, index // columns
-        for y in range(image.height()):
-            for x in range(image.width()):
-                atlas.setPixelColor(column * tile_width + x, row * tile_height + y, image.pixelColor(x, y))
-        placed.append({"step": name, "column": column, "row": row})
+    painter = QPainter(atlas)
+    try:
+        for index, (name, image) in enumerate(images):
+            column, row = index % columns, index // columns
+            painter.drawImage(column * tile_width, row * tile_height, image)
+            placed.append({"step": name, "column": column, "row": row})
+    finally:
+        painter.end()
 
     destination = Path(output_path).expanduser().resolve()
     if destination.exists() or destination.is_symlink():

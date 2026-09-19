@@ -124,7 +124,8 @@ def module_capabilities() -> dict[str, Any]:
                 {str(api.value(item, "getName", "getIdentifier") or "") for item in api.items(manager().getModules())}
                 - {""}
             )
-        except BaseException:  # noqa: BLE001 - a probe must not fail the tool.
+        except Exception:  # noqa: BLE001 - a probe must not fail the tool.
+            # Never swallow KeyboardInterrupt or SystemExit.
             loaded = []
 
     return {

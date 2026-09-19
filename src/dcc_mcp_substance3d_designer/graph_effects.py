@@ -77,6 +77,19 @@ def _find(graph: Any, node_id: str) -> Any:
     return find_in_graph(graph, node_id)
 
 
+def _remove_created(graph: Any, created: list[Any]) -> None:
+    """Remove only the nodes this call created, newest first.
+
+    Cleanup must never mask the exception that triggered it, and it must never
+    swallow KeyboardInterrupt or SystemExit.
+    """
+    for node in reversed(created):
+        try:
+            api.delete_node(node if isinstance(node, str) else node["node_id"])
+        except Exception:  # noqa: BLE001 - rollback is best effort by design.
+            continue
+
+
 def _connect_or_report(source_node: str, source_property: str, target_node: str, target_property: str) -> bool:
     """Wire one edge when both endpoints are given. Return True when wired."""
     if not target_node or not target_property:
@@ -104,19 +117,23 @@ def apply_effect(
 
     created = api.create_node(type_url, None, position)
     node_id = created["node_id"]
-    input_property = primary_input(_find(graph, node_id))
+    # Track the node before resolving ports so a PORT_NOT_FOUND during discovery
+    # still triggers the rollback this tool advertises.
+    created_nodes = [node_id]
     connected = False
     try:
+        input_property = primary_input(_find(graph, node_id))
+        output_property = primary_output(_find(graph, node_id))
         # Wire the source through the new node, then optionally onward to a target.
         connect_nodes(resolved_source, resolved_property, node_id, input_property)
         connected = _connect_or_report(
             node_id,
-            primary_output(_find(graph, node_id)),
+            output_property,
             str(target_node) if target_node else "",
             str(target_property) if target_property else "",
         )
     except BaseException:
-        api.delete_node(node_id)
+        _remove_created(graph, created_nodes)
         raise
     return {
         "graph_uid": graph_identity(graph),
@@ -133,9 +150,9 @@ def apply_effect(
         "source_node": resolved_source,
         "source_property": resolved_property,
         "head_node": node_id,
-        "head_property": primary_output(_find(graph, node_id)),
+        "head_property": output_property,
         "connected": connected,
-        "rollback": "The created node is removed when its connection fails.",
+        "rollback": "The created node is removed when any connection or port lookup fails.",
     }
 
 
@@ -175,21 +192,18 @@ def apply_effect_chain(
             connect_nodes(previous_node, previous_property, node["node_id"], input_property)
             previous_node = node["node_id"]
             previous_property = primary_output(node_handle)
+        # The final target connection is part of this call's unit of work: if it
+        # fails, the nodes created above must not survive.
+        connected = _connect_or_report(
+            previous_node,
+            previous_property,
+            str(target_node) if target_node else "",
+            str(target_property) if target_property else "",
+        )
     except BaseException:
-        # Remove only the nodes this call created, newest first.
-        for node in reversed(created):
-            try:
-                api.delete_node(node["node_id"])
-            except BaseException:  # noqa: BLE001 - cleanup must not mask the cause.
-                pass
+        _remove_created(graph, created)
         raise
 
-    connected = _connect_or_report(
-        previous_node,
-        previous_property,
-        str(target_node) if target_node else "",
-        str(target_property) if target_property else "",
-    )
     return {
         "graph_uid": graph_identity(graph),
         "category": resolved_category,

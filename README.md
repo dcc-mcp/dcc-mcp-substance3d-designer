@@ -119,10 +119,30 @@ dialog.
 
 ## Bundled skills
 
-`designer-session` provides typed tools for inspecting the active Designer
-session and creating a rendered procedural PBR material package. Host APIs are
-imported only while a tool runs, so metadata discovery remains safe outside
-Designer.
+Host APIs are imported only while a tool runs, so metadata discovery remains safe
+outside Designer.
+
+| Skill | Coverage |
+| --- | --- |
+| `designer-session` | Core graph authoring: nodes, connections, parameters, outputs, packages, resources, map export, SBSAR. |
+| `designer-diagnostics` | Read-only readiness probe proving main-thread dispatch works. |
+| `designer-effects` | Procedural effect recipes: blur, warp, levels, sharpen, edge detect, blend, mask, and ordered chains. |
+| `designer-lighting` | Lighting-response maps: normal, ambient occlusion, curvature, thickness, emissive. |
+| `designer-particles` | Seed-variation tiles and sprite-sheet atlas packing for downstream particle systems. |
+| `designer-dynamics` | Iteration-count sweeps producing ordered accumulation passes. |
+| `designer-animation` | Time-like parameter sweeps producing ordered frame sets. |
+| `designer-plugins` | Read-only inventory of the node modules that back built-in plugins. |
+
+Effect and lighting recipes are resolved against the live node-definition
+inventory instead of hardcoded type URLs, because node type URLs differ between
+Designer builds. Run the corresponding `list_*_recipes` tool first: a recipe that
+resolves to nothing fails closed with `RECIPE_UNAVAILABLE` and reports the
+candidates it tried.
+
+Designer has no particle system, dynamics solver, or timeline. The
+`designer-particles`, `designer-dynamics`, and `designer-animation` skills all
+drive one shared engine that re-evaluates a deterministic graph after a typed
+input changes, and each states that boundary in its `SKILL.md`.
 
 ## Development
 

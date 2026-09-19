@@ -84,7 +84,9 @@ def _restore(node_id: str, parameter: str, value_type: str, original: Any, expec
     """Best-effort rollback. Never mask the exception that triggered it."""
     try:
         api.set_parameter(node_id, parameter, value_type, original, expected_graph_uid)
-    except BaseException:  # noqa: BLE001 - rollback is best effort.
+    # Absorbing only Exception keeps KeyboardInterrupt/SystemExit observable and
+    # lets the exception that triggered the rollback reach the caller.
+    except Exception:  # noqa: BLE001 - rollback is best effort by design.
         pass
 
 
@@ -130,11 +132,11 @@ def bake_series(
         "node_id": resolved_node,
         "parameter": resolved_parameter,
         "value_type": resolved_type,
-        # The parameter is left at the last swept value on success, and restored
-        # to `original_value` only on failure. The name must not imply otherwise.
+        # A returned payload always describes a completed sweep, so the parameter
+        # sits at the last swept value: `original_value` is what a failing sweep
+        # is rolled back to before the failure is raised.
         "original_value": original,
         "final_value": resolved_values[-1] if resolved_values else original,
-        "parameter_restored": False,
         "output_dir": str(destination),
         "step_count": len(steps),
         "values": resolved_values,
@@ -327,6 +329,15 @@ def compose_atlas(
             "Atlas composition needs PySide2 QtGui, which Designer provides", "ATLAS_COMPOSER_UNAVAILABLE"
         ) from exc
     steps = sorted(path for path in source.iterdir() if path.is_dir())
+    total = len(steps)
+    if not total:
+        raise api.GraphAuthoringError("Series directory has no steps", "SERIES_EMPTY")
+    if columns is None:
+        columns = int(math.ceil(math.sqrt(total)))
+    if isinstance(columns, bool) or not isinstance(columns, int) or not 1 <= columns <= total:
+        raise api.GraphAuthoringError("columns must be 1..step_count", "INVALID_ATLAS_COLUMNS")
+    rows = int(math.ceil(total / columns))
+
     images = []
     for step in steps:
         candidate = step / file_name
@@ -335,22 +346,26 @@ def compose_atlas(
         image = QImage(str(candidate))
         if image.isNull():
             raise api.GraphAuthoringError(f"Step {step.name} could not be decoded", "ATLAS_STEP_UNREADABLE")
+        # Bound the whole allocation, not just one tile: the sweep engine allows
+        # 64 steps at up to 4096px, so an unbounded grid can reach several GB.
+        # Project the grid from the first decoded tile so an oversized request
+        # fails before every step is decoded and held in memory.
+        if not images:
+            projected = (image.width() * columns, image.height() * rows)
+            if projected[0] > _MAX_ATLAS_SIDE or projected[1] > _MAX_ATLAS_SIDE:
+                raise api.GraphAuthoringError(
+                    f"Atlas {projected[0]}x{projected[1]} exceeds the {_MAX_ATLAS_SIDE}px limit; "
+                    "bake fewer steps, a lower resolution, or more columns",
+                    "ATLAS_TOO_LARGE",
+                )
         images.append((step.name, image))
-    if not images:
-        raise api.GraphAuthoringError("Series directory has no steps", "SERIES_EMPTY")
 
-    total = len(images)
-    if columns is None:
-        columns = int(math.ceil(math.sqrt(total)))
-    if isinstance(columns, bool) or not isinstance(columns, int) or not 1 <= columns <= total:
-        raise api.GraphAuthoringError("columns must be 1..step_count", "INVALID_ATLAS_COLUMNS")
-    rows = int(math.ceil(total / columns))
     tile_width = max(image.width() for _, image in images)
     tile_height = max(image.height() for _, image in images)
     if not 0 < tile_width <= _MAX_TILE_SIDE or not 0 < tile_height <= _MAX_TILE_SIDE:
         raise api.GraphAuthoringError("Series tile size is out of range", "ATLAS_TILE_TOO_LARGE")
-    # Bound the whole allocation, not just one tile: the sweep engine allows 64
-    # steps at up to 4096px, so an unbounded grid can reach several GB.
+    # Definitive check with the real tile extents: the projection above assumed
+    # the first tile's size, and a later step may be larger.
     atlas_width, atlas_height = tile_width * columns, tile_height * rows
     if atlas_width > _MAX_ATLAS_SIDE or atlas_height > _MAX_ATLAS_SIDE:
         raise api.GraphAuthoringError(

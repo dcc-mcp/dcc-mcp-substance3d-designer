@@ -126,18 +126,22 @@ outside Designer.
 | --- | --- |
 | `designer-session` | Core graph authoring: nodes, connections, parameters, outputs, packages, resources, map export, SBSAR. |
 | `designer-diagnostics` | Read-only readiness probe proving main-thread dispatch works. |
-| `designer-effects` | Procedural effect recipes: blur, warp, levels, sharpen, edge detect, blend, mask, and ordered chains. |
-| `designer-lighting` | Lighting-response maps: normal, ambient occlusion, curvature, thickness, emissive. |
+| `designer-effects` | **Experimental** - procedural effect recipes: blur, warp, levels, sharpen, edge detect, blend, mask, and ordered chains. Recipes resolve at runtime; see the note below. |
+| `designer-lighting` | **Experimental** - lighting-response maps: normal, ambient occlusion, curvature, thickness, emissive. Recipes resolve at runtime; see the note below. |
 | `designer-particles` | Seed-variation tiles and sprite-sheet atlas packing for downstream particle systems. |
 | `designer-dynamics` | Iteration-count sweeps producing ordered accumulation passes. |
 | `designer-animation` | Time-like parameter sweeps producing ordered frame sets. |
 | `designer-plugins` | Read-only inventory of the node modules that back built-in plugins. |
 
-Effect and lighting recipes are resolved against the live node-definition
-inventory instead of hardcoded type URLs, because node type URLs differ between
-Designer builds. Run the corresponding `list_*_recipes` tool first: a recipe that
-resolves to nothing fails closed with `RECIPE_UNAVAILABLE` and reports the
-candidates it tried.
+`designer-effects` and `designer-lighting` are **experimental**. Their catalog
+declares 13 recipes (7 effects, 6 lighting) over 31 candidate node type URLs (17
+effects, 14 lighting). Every candidate is inferred from Designer's naming
+conventions and resolved at runtime against the live node-definition inventory,
+because node type URLs differ between Designer builds; none of them is pinned to
+a build verified on a real Designer session. Run the corresponding
+`list_*_recipes` tool first and treat its `available` flag as the source of
+truth: a recipe that resolves to nothing fails closed with `RECIPE_UNAVAILABLE`
+and reports the candidates it tried.
 
 Designer has no particle system, dynamics solver, or timeline. The
 `designer-particles`, `designer-dynamics`, and `designer-animation` skills all

@@ -194,10 +194,62 @@ def test_compose_atlas_rejects_a_missing_series_directory(tmp_path):
     assert error.value.code == "SERIES_DIR_NOT_FOUND"
 
 
-def test_bake_series_reports_that_the_parameter_is_not_restored_on_success(series_graph, tmp_path):
-    """Finding #5: success must not claim the graph was restored."""
+def test_compose_atlas_rejects_an_oversized_grid_before_decoding_every_tile(monkeypatch, tmp_path):
+    """Finding #1: project the atlas size from the first tile, not after decoding all."""
+    series_dir = tmp_path / "series"
+    for index in range(series._MAX_STEPS):
+        step = series_dir / "tile_{:04d}".format(index)
+        step.mkdir(parents=True)
+        (step / "height.png").write_bytes(b"x")
+    decoded = []
+
+    class _FakeImage:
+        def __init__(self, *args):
+            if len(args) == 3:
+                self._width, self._height = int(args[0]), int(args[1])
+            else:
+                decoded.append(str(args[0]))
+                # 64 steps at 4096px projects to 32768px per side.
+                self._width = self._height = 4096
+
+        def isNull(self):
+            return False
+
+        def width(self):
+            return self._width
+
+        def height(self):
+            return self._height
+
+        def fill(self, _value):
+            return None
+
+        def save(self, _path):
+            return True
+
+    class _FakePainter:
+        def __init__(self, _image):
+            return None
+
+        def drawImage(self, *_args):
+            return None
+
+        def end(self):
+            return None
+
+    gui = ModuleType("PySide2.QtGui")
+    gui.QImage, gui.QPainter = _FakeImage, _FakePainter
+    monkeypatch.setitem(sys.modules, "PySide2.QtGui", gui)
+    with pytest.raises(api.GraphAuthoringError) as error:
+        series.compose_atlas(str(series_dir), str(tmp_path / "atlas.png"), "height.png")
+    assert error.value.code == "ATLAS_TOO_LARGE"
+    assert len(decoded) == 1
+
+
+def test_bake_series_carries_no_constant_parameter_restored_flag(series_graph, tmp_path):
+    """Finding #5: a returned payload must not carry a field that is always False."""
     result = series.bake_animation_frames(str(tmp_path / "frames"), "100", "time", "float", 0, 1, 3, _OUTPUTS, _UID)
-    assert result["parameter_restored"] is False
+    assert "parameter_restored" not in result
     assert result["original_value"] == 0.0
     assert result["final_value"] == 1.0
     assert result["values"] == [0.0, 0.5, 1.0]

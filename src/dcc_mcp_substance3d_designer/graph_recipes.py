@@ -6,6 +6,12 @@ versions. Every recipe therefore declares an ordered list of candidate URLs and
 resolves the first one the live SDK actually advertises. Nothing here invents a
 node type: an unresolvable recipe fails closed with ``RECIPE_UNAVAILABLE`` and
 reports the candidates it tried.
+
+The catalog is experimental and resolution-time only. It currently ships 13
+recipes over 31 candidate URLs - 7 effect recipes over 17 candidates and 6
+lighting recipes over 14 candidates - all inferred from Designer's naming
+conventions rather than verified against a real Designer session, so counts and
+candidates must be read as "what this build tries", never as "what exists".
 """
 
 from __future__ import annotations

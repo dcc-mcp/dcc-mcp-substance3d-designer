@@ -239,6 +239,20 @@ def delete_node(node_id: str, expected_graph_uid: str | None = None) -> dict[str
     return {"node_id": identifier}
 
 
+def remove_created(created: list[Any]) -> None:
+    """Remove only the nodes one call created, newest first.
+
+    Shared rollback primitive for the effect, lighting, and series tools. Cleanup
+    must never mask the exception that triggered it, and it must never swallow
+    KeyboardInterrupt or SystemExit, so only ``Exception`` is absorbed here.
+    """
+    for node in reversed(created):
+        try:
+            delete_node(node if isinstance(node, str) else node["node_id"])
+        except Exception:  # noqa: BLE001 - rollback is best effort by design.
+            continue
+
+
 def set_node_position(node_id: str, position: list[float]) -> dict[str, Any]:
     if len(position) != 2:
         raise GraphAuthoringError("position must contain exactly two numbers", "INVALID_POSITION")

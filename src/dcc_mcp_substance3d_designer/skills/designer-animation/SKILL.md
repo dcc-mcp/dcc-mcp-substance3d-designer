@@ -9,7 +9,7 @@ allowed-tools: Python
 metadata:
   dcc-mcp:
     dcc: substance3d_designer
-    version: "0.8.0" # x-release-please-version
+    version: "0.8.1" # x-release-please-version
     layer: domain
     stage: authoring
     search-hint: "substance designer animation frames time sweep sequence bake timeline"

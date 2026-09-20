@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.8.0...v0.8.1) (2026-09-20)
+
+
+### Documentation
+
+* mark effects and lighting recipes experimental and clean up review leftovers ([0818218](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/08182182143dbe77aad99a37210c7be4513724b6))
+
 ## [0.8.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.7.0...v0.8.0) (2026-09-19)
 
 

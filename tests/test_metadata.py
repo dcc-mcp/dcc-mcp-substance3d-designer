@@ -74,7 +74,6 @@ def _uses_action(step: dict[str, object], action: str) -> bool:
     instead of the mutable ``release/v1`` tag, so the ref is not a stable
     identifier to compare against.
     """
-
     return str(step.get("uses") or "").split("#", 1)[0].strip().startswith(f"{action}@")
 
 

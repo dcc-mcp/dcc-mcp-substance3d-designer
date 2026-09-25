@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.8.1...v0.8.2) (2026-09-25)
+
+
+### Bug Fixes
+
+* **install:** emit the Install SOP document schema version in reports and receipts ([38623dd](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/38623dd51721a958b8dc5d2e8957e991908333ac))
+
 ## [0.8.1](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.8.0...v0.8.1) (2026-09-20)
 
 

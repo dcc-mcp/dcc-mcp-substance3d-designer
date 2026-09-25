@@ -9,7 +9,7 @@ allowed-tools: Python
 metadata:
   dcc-mcp:
     dcc: substance3d_designer
-    version: "0.8.1" # x-release-please-version
+    version: "0.8.2" # x-release-please-version
     layer: bootstrap
     stage: bootstrap
     search-hint: "substance designer diagnostics ping readiness version"

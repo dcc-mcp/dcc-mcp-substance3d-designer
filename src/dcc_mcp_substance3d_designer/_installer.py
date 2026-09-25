@@ -22,7 +22,6 @@ from dcc_mcp_core.deployment import (
     INSTALL_EXIT_PREFLIGHT,
     INSTALL_EXIT_REQUIRES_RESTART,
     INSTALL_EXIT_VERIFY,
-    INSTALL_SOP_SCHEMA_VERSION,
     inspect_install_root,
     safe_remove_tree,
     safe_replace_tree,
@@ -41,6 +40,7 @@ from dcc_mcp_substance3d_designer._install_io import (
 from dcc_mcp_substance3d_designer._install_model import (
     COMMAND,
     DCC_TYPE,
+    INSTALL_SOP_DOCUMENT_SCHEMA_VERSION,
     MIN_CORE_VERSION,
     InstallContext,
     LifecycleFailure,
@@ -162,7 +162,7 @@ def _plan(ctx: InstallContext, verb: str) -> LifecycleOutcome:
 
 def _base_result(ctx: InstallContext, *, status: str, verify: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     result = {
-        "schema_version": INSTALL_SOP_SCHEMA_VERSION,
+        "schema_version": INSTALL_SOP_DOCUMENT_SCHEMA_VERSION,
         "status": status,
         "dcc_type": DCC_TYPE,
         "adapter_version": __version__,
@@ -280,7 +280,7 @@ def _launcher_payload(ctx: InstallContext, *, platform_name: Optional[str] = Non
 
 def _receipt(ctx: InstallContext, installed_at: float) -> Dict[str, Any]:
     return {
-        "schema_version": INSTALL_SOP_SCHEMA_VERSION,
+        "schema_version": INSTALL_SOP_DOCUMENT_SCHEMA_VERSION,
         "dcc_type": DCC_TYPE,
         "adapter_version": __version__,
         "core_version": ctx.core_version,
@@ -533,7 +533,7 @@ def _failure_result(
     }
     if context is None:
         result = {
-            "schema_version": INSTALL_SOP_SCHEMA_VERSION,
+            "schema_version": INSTALL_SOP_DOCUMENT_SCHEMA_VERSION,
             "status": "requires_restart" if requires_restart else "failed",
             "dcc_type": DCC_TYPE,
             "adapter_version": __version__,

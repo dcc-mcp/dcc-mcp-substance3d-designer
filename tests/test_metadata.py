@@ -67,15 +67,24 @@ def _run_index(steps: list[dict[str, object]], command: str) -> int:
     return next(index for index, step in enumerate(steps) if step.get("run") == command)
 
 
+def _uses_action(step: dict[str, object], action: str) -> bool:
+    """Report whether ``step`` invokes ``action``, whatever ref pins it.
+
+    The release workflow pins the publish action to an immutable commit SHA
+    instead of the mutable ``release/v1`` tag, so the ref is not a stable
+    identifier to compare against.
+    """
+
+    return str(step.get("uses") or "").split("#", 1)[0].strip().startswith(f"{action}@")
+
+
 def test_release_validates_source_and_built_wheel_before_publish():
     steps = _workflow_steps("release.yml", "build-and-publish")
     dependencies = _run_index(steps, "python -m pip install --upgrade pip build twine pyyaml")
     source_check = _run_index(steps, "python tools/check_release_metadata.py")
     build = _run_index(steps, "python -m build")
     wheel_check = _run_index(steps, "python tools/check_release_metadata.py --wheel dist/*.whl")
-    publish = next(
-        index for index, step in enumerate(steps) if step.get("uses") == "pypa/gh-action-pypi-publish@release/v1"
-    )
+    publish = next(index for index, step in enumerate(steps) if _uses_action(step, "pypa/gh-action-pypi-publish"))
     assert dependencies < source_check < build < wheel_check < publish
 
 

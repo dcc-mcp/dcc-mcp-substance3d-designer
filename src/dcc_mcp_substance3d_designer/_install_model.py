@@ -8,6 +8,27 @@ from typing import Any, Dict, Optional
 
 from dcc_mcp_core.deployment import INSTALL_EXIT_PREFLIGHT
 
+
+def _document_schema_version() -> int:
+    """Resolve the report document's ``schema_version`` from the shipped schema.
+
+    ``INSTALL_SOP_SCHEMA_VERSION`` is the *artifact* revision of the published
+    schema file (the ``-vN`` suffix), not the document field. Core 0.20.34
+    repurposed it from 1 to 2 while the schema keeps pinning the document field
+    to the constant 1, so copying it into a report makes that report invalid.
+    """
+
+    try:
+        from dcc_mcp_core.deployment import load_install_sop_schema
+
+        return int(load_install_sop_schema()["properties"]["schema_version"]["const"])
+    except (ImportError, KeyError, TypeError, ValueError):
+        return 1
+
+
+# The document field core's Install SOP schema pins as a constant.
+INSTALL_SOP_DOCUMENT_SCHEMA_VERSION = _document_schema_version()
+
 DCC_TYPE = "substance3d_designer"
 COMMAND = "dcc-mcp-substance3d-designer"
 MIN_CORE_VERSION = "0.20.15"

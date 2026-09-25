@@ -14,6 +14,8 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
+from dcc_mcp_substance3d_designer._install_model import INSTALL_SOP_DOCUMENT_SCHEMA_VERSION
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -173,7 +175,9 @@ def test_install_defaults_to_a_non_mutating_public_plan(tmp_path, monkeypatch, c
     result = json.loads(capsys.readouterr().out)
 
     assert exit_code == 0
-    assert result["schema_version"] == 1
+    # Core 0.20.34 repurposed INSTALL_SOP_SCHEMA_VERSION as the schema *artifact*
+    # revision (2); the report document field stays at the value the schema pins.
+    assert result["schema_version"] == INSTALL_SOP_DOCUMENT_SCHEMA_VERSION
     assert result["status"] == "planned"
     assert result["dcc_type"] == "substance3d_designer"
     assert result["adapter_version"]

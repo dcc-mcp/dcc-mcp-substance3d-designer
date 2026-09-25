@@ -7,11 +7,14 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, Mapping
 
-from dcc_mcp_core.deployment import INSTALL_SOP_SCHEMA_VERSION
-
 from dcc_mcp_substance3d_designer.__version__ import __version__
 from dcc_mcp_substance3d_designer._install_io import hash_file, load_json
-from dcc_mcp_substance3d_designer._install_model import DCC_TYPE, InstallContext, LifecycleFailure
+from dcc_mcp_substance3d_designer._install_model import (
+    DCC_TYPE,
+    INSTALL_SOP_DOCUMENT_SCHEMA_VERSION,
+    InstallContext,
+    LifecycleFailure,
+)
 
 _VERSION_RE = re.compile(r"(?:0|[1-9][0-9]{0,5})(?:\.(?:0|[1-9][0-9]{0,5})){2}")
 
@@ -43,7 +46,7 @@ def load_and_validate_receipt(
     files = receipt.get("files")
     adapter_version = receipt.get("adapter_version")
     if (
-        receipt.get("schema_version") != INSTALL_SOP_SCHEMA_VERSION
+        receipt.get("schema_version") != INSTALL_SOP_DOCUMENT_SCHEMA_VERSION
         or receipt.get("dcc_type") != DCC_TYPE
         or not isinstance(adapter_version, str)
         or len(adapter_version) > 32

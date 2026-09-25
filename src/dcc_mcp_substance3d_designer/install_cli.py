@@ -8,10 +8,13 @@ import sys
 from typing import Optional, Sequence
 
 import dcc_mcp_core
-from dcc_mcp_core.deployment import INSTALL_EXIT_PREFLIGHT, INSTALL_SOP_SCHEMA_VERSION
+from dcc_mcp_core.deployment import INSTALL_EXIT_PREFLIGHT
 
 from dcc_mcp_substance3d_designer.__version__ import __version__
-from dcc_mcp_substance3d_designer._install_model import DCC_TYPE
+from dcc_mcp_substance3d_designer._install_model import (
+    DCC_TYPE,
+    INSTALL_SOP_DOCUMENT_SCHEMA_VERSION,
+)
 from dcc_mcp_substance3d_designer._installer import COMMAND, run_lifecycle
 
 
@@ -44,7 +47,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         args = _parser().parse_args(raw_arguments)
     except _ArgumentFailure:
         result = {
-            "schema_version": INSTALL_SOP_SCHEMA_VERSION,
+            "schema_version": INSTALL_SOP_DOCUMENT_SCHEMA_VERSION,
             "status": "failed",
             "dcc_type": DCC_TYPE,
             "adapter_version": __version__,

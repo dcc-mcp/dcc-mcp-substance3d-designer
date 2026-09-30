@@ -9,8 +9,18 @@ from . import graph_authoring as api
 from .graph_inspection import checked_graph, graph_identity, page
 
 
+def _readable_package_path(path: str) -> Path:
+    """Accept native source and compiled packages without relaxing save paths."""
+    resolved = Path(path).expanduser().resolve()
+    if resolved.suffix.casefold() not in (".sbs", ".sbsar"):
+        raise api.GraphAuthoringError("Package path must end with .sbs or .sbsar", "INVALID_PACKAGE_PATH")
+    if not resolved.is_file():
+        raise api.GraphAuthoringError("Package path does not exist", "PACKAGE_NOT_FOUND")
+    return resolved
+
+
 def _package(path: str):
-    resolved = api._sbs_path(path, must_exist=True)
+    resolved = _readable_package_path(path)
     found = api.package_manager().getUserPackageFromFilePath(str(resolved))
     if found is None:
         raise api.GraphAuthoringError("Open the requested package first", "PACKAGE_NOT_OPEN")
@@ -95,7 +105,7 @@ def instance_resource(package_path: str, resource_url: str, expected_graph_uid: 
 
 
 def open_package(path: str) -> dict[str, Any]:
-    resolved = api._sbs_path(path, must_exist=True)
+    resolved = _readable_package_path(path)
     manager = api.package_manager()
     package = manager.getUserPackageFromFilePath(str(resolved))
     if package is not None:

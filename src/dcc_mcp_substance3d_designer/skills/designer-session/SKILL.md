@@ -73,6 +73,23 @@ native pixel format and source node/port. SAT export owns the renderer process t
 Save before closing a modified package; opening an already-open package preserves
 its in-memory edits. Use a new path to export SBSAR or save another package.
 
+### Reopen source and inspect compiled output
+
+`open_package` accepts `.sbs` and `.sbsar`; save paths remain `.sbs` only. To
+prove a source reopen, save and close its unmodified package, open the saved
+file, then select its explicit resource and call `evaluate_graph` and
+`export_native_maps` with the newly observed graph UID. An `already_open=true`
+receipt preserves edits and does not prove a disk reload.
+
+To read compiled output without SAT, open the exported `.sbsar`, call
+`list_resources`, and instantiate its returned material resource with
+`instance_resource` in a separate source composition graph. Inspect the
+instance's returned native output ports, connect them to named graph outputs,
+set an absolute bounded output size, and use `export_native_maps`. Keep source
+and compiled output receipts separate; successful package loading alone does
+not prove that compiled textures match the source. Compiled resources are not
+editable source graph topology.
+
 The higher-level procedural and imported-PBR tools remain available for common
 material recipes. Use the granular tools when the graph topology or package
 lifecycle must be controlled and verified step by step.

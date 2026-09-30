@@ -504,6 +504,7 @@ def save_package() -> dict[str, Any]:
     package = active_package()
     if not package_path(package):
         raise GraphAuthoringError("Unsaved package requires save_package_as", "PACKAGE_PATH_REQUIRED")
+    _sbs_path(package_path(package), must_exist=False)
     result = package_manager().savePackage(package)
     artifact = Path(package_path(package))
     if result is False or package.isModified() or not artifact.is_file() or not artifact.stat().st_size:

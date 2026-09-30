@@ -99,8 +99,9 @@ def test_export_preflight_leaves_destination_absent(export_host, tmp_path, argum
     assert not destination.exists()
 
 
-def test_open_existing_dirty_package_does_not_reload(monkeypatch, tmp_path):
-    path = tmp_path / "material.sbs"
+@pytest.mark.parametrize("suffix", [".sbs", ".sbsar"])
+def test_open_existing_dirty_package_does_not_reload(monkeypatch, tmp_path, suffix):
+    path = tmp_path / ("material" + suffix)
     path.write_bytes(b"package")
     package = SimpleNamespace(isModified=lambda: True)
 
@@ -113,6 +114,78 @@ def test_open_existing_dirty_package_does_not_reload(monkeypatch, tmp_path):
         lambda: SimpleNamespace(getUserPackageFromFilePath=lambda path: package, loadUserPackage=forbidden),
     )
     assert resources.open_package(str(path)) == {"package_path": str(path), "saved": False, "already_open": True}
+
+
+@pytest.mark.parametrize("suffix", [".sbs", ".sbsar", ".SBSAR"])
+def test_open_package_uses_native_loader_and_checks_path(monkeypatch, tmp_path, suffix):
+    path = tmp_path / ("material" + suffix)
+    path.write_bytes(b"package")
+    calls = []
+    package = SimpleNamespace(isModified=lambda: False, getFilePath=lambda: str(path))
+
+    def load(*arguments):
+        calls.append(arguments)
+        return package
+
+    monkeypatch.setattr(
+        api,
+        "package_manager",
+        lambda: SimpleNamespace(getUserPackageFromFilePath=lambda path: None, loadUserPackage=load),
+    )
+    assert resources.open_package(str(path)) == {"package_path": str(path), "saved": True, "already_open": False}
+    assert calls == [(str(path), True, False)]
+    package.getFilePath = lambda: str(tmp_path / "other.sbsar")
+    with pytest.raises(api.GraphAuthoringError) as error:
+        resources.open_package(str(path))
+    assert error.value.code == "PACKAGE_OPEN_FAILED"
+
+
+@pytest.mark.parametrize(
+    "filename,code", [("absent.sbsar", "PACKAGE_NOT_FOUND"), ("material.zip", "INVALID_PACKAGE_PATH")]
+)
+def test_open_package_rejects_invalid_input_before_sdk(monkeypatch, tmp_path, filename, code):
+    monkeypatch.setattr(api, "package_manager", lambda: pytest.fail("Must validate before SDK loading"))
+    with pytest.raises(api.GraphAuthoringError) as error:
+        resources.open_package(str(tmp_path / filename))
+    assert error.value.code == code
+
+
+def test_compiled_package_resources_use_explicit_loaded_archive(monkeypatch, tmp_path):
+    path = tmp_path / "material.sbsar"
+    path.write_bytes(b"archive")
+    resource = SimpleNamespace(
+        getUrl=lambda: "pkg://material",
+        getIdentifier=lambda: "material",
+        getType=lambda: SimpleNamespace(getId=lambda: "compiled-resource"),
+        getEmbedMethod=lambda: "Embedded",
+    )
+    package = SimpleNamespace(getChildrenResources=lambda recursive: [resource])
+    lookups = []
+
+    def find(requested):
+        lookups.append(requested)
+        return package
+
+    monkeypatch.setattr(api, "package_manager", lambda: SimpleNamespace(getUserPackageFromFilePath=find))
+    result = resources.list_resources(str(path))
+    assert lookups == [str(path)]
+    assert result["items"][0]["resource_url"] == "pkg://material"
+
+
+def test_compiled_path_cannot_be_used_for_save_as(monkeypatch, tmp_path):
+    monkeypatch.setattr(api, "active_package", lambda: pytest.fail("Must reject compiled save before mutation"))
+    with pytest.raises(api.GraphAuthoringError) as error:
+        api.save_package_as(str(tmp_path / "material.sbsar"))
+    assert error.value.code == "INVALID_PACKAGE_PATH"
+
+
+def test_save_loaded_compiled_package_is_rejected_before_sdk(monkeypatch, tmp_path):
+    package = SimpleNamespace(getFilePath=lambda: str(tmp_path / "material.sbsar"))
+    monkeypatch.setattr(api, "active_package", lambda: package)
+    monkeypatch.setattr(api, "package_manager", lambda: pytest.fail("Must not save a compiled archive"))
+    with pytest.raises(api.GraphAuthoringError) as error:
+        api.save_package()
+    assert error.value.code == "INVALID_PACKAGE_PATH"
 
 
 def test_close_dirty_package_preserves_edits(monkeypatch):

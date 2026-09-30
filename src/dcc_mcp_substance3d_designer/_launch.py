@@ -31,6 +31,7 @@ def launch(host: str, startup: str, arguments: Sequence[str]) -> int:
         else:
             forwarded.append(argument)
     environment = os.environ.copy()
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
     environment.pop("DCC_MCP_DESIGNER_USER_STARTUP_SCRIPT", None)
     if user_script is not None:
         environment["DCC_MCP_DESIGNER_USER_STARTUP_SCRIPT"] = user_script

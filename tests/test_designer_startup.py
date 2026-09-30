@@ -44,6 +44,26 @@ def test_activation_uses_native_name_directory_and_loaded_status(sdk):
     assert calls == [("adapter", str(path.parent))]
 
 
+@pytest.mark.parametrize("failed", [False, True])
+def test_native_import_does_not_write_unreceipted_bytecode(sdk, monkeypatch, failed):
+    path, plugin, manager, _ = sdk
+    monkeypatch.setattr(sys, "dont_write_bytecode", False)
+
+    def load(*args):
+        assert sys.dont_write_bytecode is True
+        if failed:
+            raise RuntimeError("native load failure")
+        return plugin
+
+    manager.loadPlugin = load
+    if failed:
+        with pytest.raises(RuntimeError, match="native load failure"):
+            _startup.activate_plugin(str(path))
+    else:
+        _startup.activate_plugin(str(path))
+    assert sys.dont_write_bytecode is False
+
+
 def test_already_loaded_owned_plugin_is_not_reloaded(sdk):
     path, plugin, manager, calls = sdk
     manager.getPlugins = lambda: SimpleNamespace(getSize=lambda: 1, getItem=lambda index: plugin)
@@ -107,6 +127,7 @@ def test_launcher_composes_startup_and_preserves_arguments_environment(monkeypat
     assert command == ["host.exe", "--startup-script", "owned-startup.py", "--config-file", "owned.sbscfg", "--quit"]
     assert options["env"]["DCC_MCP_DESIGNER_USER_STARTUP_SCRIPT"] == str(script)
     assert options["env"]["SBS_DESIGNER_PYTHON_PATH"] == "existing-plugins"
+    assert options["env"]["PYTHONDONTWRITEBYTECODE"] == "1"
     assert os.environ["DCC_MCP_DESIGNER_USER_STARTUP_SCRIPT"] == "stale"
 
 

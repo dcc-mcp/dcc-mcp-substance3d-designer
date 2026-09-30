@@ -12,6 +12,8 @@ If the caller supplies `--startup-script <file>` (or `--startup-script=<file>`),
 the launcher runs it after adapter activation through the composed startup
 script. Other Designer arguments and existing environment paths are preserved.
 Duplicate or missing startup-script arguments fail before launching the host.
+Bytecode writing is disabled in the launched process so plugin discovery cannot
+add cache files outside the install receipt's managed artifacts.
 Legacy receipts remain valid for owned cleanup; explicit install/upgrade repairs
 the discovery-only launcher and receipts its additional startup file.
 

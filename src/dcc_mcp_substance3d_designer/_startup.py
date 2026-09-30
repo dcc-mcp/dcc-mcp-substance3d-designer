@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import runpy
+import sys
 from pathlib import Path
 
 
@@ -34,7 +35,13 @@ def activate_plugin(plugin_path: str) -> None:
     if owned and owned[0].getStatus() == SDPluginStatus.Loaded:
         return
     # loadPlugin takes a native plugin name without the Python file extension.
-    plugin = manager.loadPlugin(path.stem, str(path.parent))
+    bytecode_policy = sys.dont_write_bytecode
+    try:
+        # Native loading imports the receipted module; cache files are not owned artifacts.
+        sys.dont_write_bytecode = True
+        plugin = manager.loadPlugin(path.stem, str(path.parent))
+    finally:
+        sys.dont_write_bytecode = bytecode_policy
     if plugin is None or plugin.getStatus() != SDPluginStatus.Loaded:
         detail = "No plugin returned" if plugin is None else plugin.getLastErrorMessage()
         raise RuntimeError(f"Designer adapter plugin activation failed: {detail}")

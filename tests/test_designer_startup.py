@@ -146,3 +146,11 @@ def test_native_end_of_options_preserves_positional_arguments(monkeypatch):
     )
     assert _launch.launch("host.exe", "owned.py", ["--", "--startup-script", "literal-filename"]) == 0
     assert calls == [["host.exe", "--startup-script", "owned.py", "--", "--startup-script", "literal-filename"]]
+
+
+def test_launcher_rejects_recursive_startup_composition(monkeypatch, tmp_path):
+    path = tmp_path / "startup.py"
+    path.write_text("# owned startup")
+    monkeypatch.setattr(_launch.subprocess, "run", lambda *args, **options: pytest.fail("Must not launch host"))
+    with pytest.raises(ValueError, match="cannot be the adapter"):
+        _launch.launch("host.exe", str(path), ["--startup-script", str(path)])

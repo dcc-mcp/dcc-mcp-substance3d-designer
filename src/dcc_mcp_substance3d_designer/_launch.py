@@ -26,6 +26,8 @@ def launch(host: str, startup: str, arguments: Sequence[str]) -> int:
             user_script = str(Path(candidate).resolve(strict=True))
             if not Path(user_script).is_file():
                 raise ValueError("Designer startup script must be a file")
+            if Path(user_script) == Path(startup).resolve():
+                raise ValueError("Caller startup script cannot be the adapter startup script")
         else:
             forwarded.append(argument)
     environment = os.environ.copy()

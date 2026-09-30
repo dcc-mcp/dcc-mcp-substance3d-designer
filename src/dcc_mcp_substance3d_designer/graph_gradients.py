@@ -22,7 +22,7 @@ def _unit_number(raw: Any) -> float:
     return float(raw)
 
 
-def validate_keys(keys: Any) -> list[dict[str, Any]]:
+def validate_keys(keys: Any, *, strict_order: bool = True) -> list[dict[str, Any]]:
     """Normalize ordered keys before importing or accessing the SDK."""
     if not isinstance(keys, list) or not 2 <= len(keys) <= _MAX_KEYS:
         raise api.GraphAuthoringError("An RGBA gradient requires 2..64 keys", "INVALID_GRADIENT_KEYS")
@@ -42,7 +42,7 @@ def validate_keys(keys: Any) -> list[dict[str, Any]]:
                 "midpoint": _unit_number(key.get("midpoint", 0.5)),
             }
         )
-    if any(left["position"] >= right["position"] for left, right in zip(normalized, normalized[1:])):
+    if strict_order and any(left["position"] >= right["position"] for left, right in zip(normalized, normalized[1:])):
         raise api.GraphAuthoringError("Gradient positions must be strictly increasing", "INVALID_GRADIENT_KEYS")
     return normalized
 
@@ -87,7 +87,7 @@ def _read_keys(native: Any) -> list[dict[str, Any]]:
                 "midpoint": api.json_value(key.getPropertyValueFromId("midpoint")),
             }
         )
-    return validate_keys(keys)
+    return validate_keys(keys, strict_order=False)
 
 
 def get_gradient_keys(node_id: str, expected_graph_uid: str) -> dict[str, Any]:
@@ -127,7 +127,7 @@ def set_gradient_keys(node_id: str, keys: Any, expected_graph_uid: str) -> dict[
         item.setPropertyValueFromId("midpoint", api.typed_value("float", key["midpoint"]))
         item.setPropertyValueFromId("value", api.typed_value("colorrgba", key["color"]))
         native.setItem(index, item)
-    expected = _read_keys(native)
+    expected = validate_keys(_read_keys(native))
     checked_graph(expected_graph_uid)
     try:
         node.setInputPropertyValueFromId(prop.getId(), native)

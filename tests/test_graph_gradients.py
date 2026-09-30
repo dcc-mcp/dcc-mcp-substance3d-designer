@@ -229,6 +229,26 @@ def test_graph_rechecked_before_mutation(host, monkeypatch):
     assert state["writes"] == []
 
 
+@pytest.mark.parametrize("positions", [[0, 0, 1], [1, 0, 0]])
+def test_native_getter_preserves_stacked_pins_and_native_order(host, positions):
+    state = host[0]
+    original = state["value"]
+    original.keys.append(copy.deepcopy(original.getItem(1)))
+    for key, position in zip(original.keys, positions):
+        key.values["position"] = Value(position)
+    result = gradients.get_gradient_keys("200", "graph-A")
+    assert [key["position"] for key in result["keys"]] == positions
+    assert state["writes"] == []
+
+
+def test_positions_collapsing_in_native_float32_fail_before_mutation(host):
+    keys = copy.deepcopy(KEYS)
+    keys[1]["position"] = 1e-100
+    with pytest.raises(api.GraphAuthoringError, match="strictly increasing"):
+        gradients.set_gradient_keys("200", keys, "graph-A")
+    assert host[0]["writes"] == []
+
+
 def test_failed_native_readback_restores_previous_array(host):
     state, node, _, _, _ = host
     original = state["value"]

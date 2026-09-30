@@ -53,6 +53,8 @@ The setter replaces 2..64 strictly ordered keys, with position, RGBA channels,
 and midpoint in 0..1 (midpoint defaults to 0.5). It rejects other node/input types,
 connected or function-driven inputs, and nonfinite values before mutation.
 Results contain the actual native float values, which may have float32 rounding.
+Reads preserve native pin order, including stacked pins with equal positions.
+Writes require strictly increasing positions after native float32 conversion.
 Readback failure restores the prior gradient. These tools do not change color
 mode, interpolation mode, other node parameters, or graph connections.
 

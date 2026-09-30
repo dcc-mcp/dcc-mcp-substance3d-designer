@@ -2,7 +2,7 @@
 name: designer-session
 description: >-
   Host skill - inspect, author, save, and export a Substance 3D Designer graph.
-  Use when an Agent needs bounded node, connection, parameter, output, package,
+  Use when an Agent needs bounded node, connection, parameter, gradient, output, package,
   resource, map, or SBSAR operations instead of arbitrary Python execution.
 license: MIT
 compatibility: "Substance 3D Designer Python 3.9+; dcc-mcp-core 0.20.15+"
@@ -13,8 +13,8 @@ metadata:
     version: "0.8.1" # x-release-please-version
     layer: bootstrap
     stage: bootstrap
-    search-hint: "substance designer typed graph nodes connections parameters outputs package sbs sbsar render maps inspect"
-    tags: "substance, designer, package, graph, node, connection, parameter, output, sbsar, render, inspect"
+    search-hint: "substance designer typed graph nodes connections parameters RGBA gradient keys outputs package sbs sbsar render maps inspect"
+    tags: "substance, designer, package, graph, node, connection, parameter, gradient, output, sbsar, render, inspect"
     tools: tools.yaml
 ---
 
@@ -46,6 +46,15 @@ a unique string input; unsupported types return `EXPOSE_API_UNAVAILABLE` or
 `EXPOSE_TYPE_UNSUPPORTED`. Use `set_graph_parameter` to edit the exposed value.
 Host API calls remain on the
 Designer main thread through the adapter's Core execution bridge.
+
+Use `get_gradient_keys` and `set_gradient_keys` for the native `gradientrgba`
+input of `sbs::compositing::gradient` nodes. Both require the observed graph UID.
+The setter replaces 2..64 strictly ordered keys, with position, RGBA channels,
+and midpoint in 0..1 (midpoint defaults to 0.5). It rejects other node/input types,
+connected or function-driven inputs, and nonfinite values before mutation.
+Results contain the actual native float values, which may have float32 rounding.
+Readback failure restores the prior gradient. These tools do not change color
+mode, interpolation mode, other node parameters, or graph connections.
 
 Start with `list_nodes` and `list_node_types`, then `describe_node` or
 `describe_node_type` to inspect supported parameter and port types. Reuse returned

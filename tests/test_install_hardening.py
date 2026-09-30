@@ -56,11 +56,53 @@ def _write_current_install(ctx: InstallContext) -> dict:
     ctx.plugin_path.parent.mkdir(parents=True, exist_ok=True)
     ctx.launcher_path.parent.mkdir(parents=True, exist_ok=True)
     ctx.plugin_path.write_text("old plugin\n", encoding="utf-8")
+    ctx.startup_path.write_text("old startup\n", encoding="utf-8")
     ctx.launcher_path.write_text("old launcher\n", encoding="utf-8")
     receipt = _installer._receipt(ctx, time.time())
     ctx.receipt_path.parent.mkdir(parents=True, exist_ok=True)
     ctx.receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
     return receipt
+
+
+def test_startup_artifact_is_receipted_and_tamper_checked(tmp_path):
+    from dcc_mcp_substance3d_designer._install_receipt import load_and_validate_receipt
+
+    ctx = _context(tmp_path)
+    receipt = _write_current_install(ctx)
+    assert {item["path"] for item in receipt["files"]} == {
+        str(ctx.plugin_path),
+        str(ctx.launcher_path),
+        str(ctx.startup_path),
+    }
+    assert load_and_validate_receipt(ctx) == receipt
+    ctx.startup_path.write_text("changed startup")
+    with pytest.raises(LifecycleFailure, match="missing or changed"):
+        load_and_validate_receipt(ctx)
+
+
+def test_legacy_receipt_still_owns_exact_cleanup_files(tmp_path):
+    from dcc_mcp_substance3d_designer._install_receipt import load_and_validate_receipt
+
+    ctx = _context(tmp_path)
+    receipt = _write_current_install(ctx)
+    ctx.startup_path.unlink()
+    receipt["files"] = [item for item in receipt["files"] if item["path"] != str(ctx.startup_path)]
+    ctx.receipt_path.write_text(json.dumps(receipt))
+    assert load_and_validate_receipt(ctx) == receipt
+    ctx.startup_path.write_text("not owned by legacy receipt")
+    with pytest.raises(LifecycleFailure, match="not owned"):
+        load_and_validate_receipt(ctx)
+
+
+def test_generated_startup_executes_without_main_module_assumption(tmp_path, monkeypatch):
+    ctx = _context(tmp_path)
+    calls = []
+    from dcc_mcp_substance3d_designer import _startup
+
+    monkeypatch.setattr(_startup, "run_startup", lambda path: calls.append(path))
+    namespace = {"__name__": "official_startup_script"}
+    exec(compile(_installer._startup_source(ctx), "startup.py", "exec"), namespace)
+    assert calls == [str(ctx.plugin_path)]
 
 
 def test_uses_released_core_contract_and_official_schema() -> None:

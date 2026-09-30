@@ -248,6 +248,7 @@ def test_install_stages_a_receipted_launcher_and_uninstall_consumes_only_the_rec
     assert owned_paths == {
         install_root / "payload" / "plugins" / "dcc_mcp_substance3d_designer_plugin.py",
         install_root / "launchers" / f"substance3d_designer{suffix}",
+        install_root / "payload" / "startup.py",
     }
     assert all(path.is_file() for path in owned_paths)
     assert all(len(item["sha256"]) == 64 for item in receipt["files"])
@@ -738,6 +739,7 @@ def test_posix_launcher_preserves_existing_paths_when_owned_paths_contain_spaces
     context = types.SimpleNamespace(
         plugin_path=PurePosixPath("/tmp/root with spaces/payload/plugins/plugin.py"),
         python_root=PurePosixPath("/tmp/python with spaces/site-packages"),
+        python_path=PurePosixPath("/tmp/python with spaces/python"),
         host_path=PurePosixPath("/opt/Adobe Designer/Designer"),
     )
 
@@ -747,7 +749,11 @@ def test_posix_launcher_preserves_existing_paths_when_owned_paths_contain_spaces
     assert "python_root='/tmp/python with spaces/site-packages'" in launcher
     assert '${SBS_DESIGNER_PYTHON_PATH}:}${adapter_plugins}"' in launcher
     assert 'PYTHONPATH="${python_root}${PYTHONPATH:+:${PYTHONPATH}}"' in launcher
-    assert "exec '/opt/Adobe Designer/Designer' \"$@\"" in launcher
+    assert "exec '/tmp/python with spaces/python' -m dcc_mcp_substance3d_designer._launch" in launcher
+    assert (
+        "--host '/opt/Adobe Designer/Designer' --startup '/tmp/root with spaces/payload/startup.py' -- \"$@\""
+        in launcher
+    )
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows standard install discovery")

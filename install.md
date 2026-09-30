@@ -4,6 +4,17 @@ This is the canonical Agent-facing installation path for the Designer adapter. T
 creates a user-owned launcher and a receipt under `~/.dcc-mcp/substance3d_designer`; it does not
 modify a global shell profile, system registry, or the Designer application directory.
 
+The launcher passes a receipted `--startup-script` to Designer. That script uses
+the official plugin manager to activate the adapter and check its native status;
+the search-path environment alone proves only plugin discovery. Activation is
+separate from MCP readiness, which still requires the typed diagnostics probe.
+If the caller supplies `--startup-script <file>` (or `--startup-script=<file>`),
+the launcher runs it after adapter activation through the composed startup
+script. Other Designer arguments and existing environment paths are preserved.
+Duplicate or missing startup-script arguments fail before launching the host.
+Legacy receipts remain valid for owned cleanup; explicit install/upgrade repairs
+the discovery-only launcher and receipts its additional startup file.
+
 ## Requirements
 
 - Adobe Substance 3D Designer 12.1 or newer.

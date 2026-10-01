@@ -1,4 +1,30 @@
 tools:
+- name: inspect_renderer
+  description: Read bounded installed official renderer help and hash fixed available engine libraries; installed libraries do not prove GPU execution.
+  input_schema:
+    type: object
+    additionalProperties: false
+    properties: {}
+  output_schema:
+    type: object
+    required: [success, message]
+    properties:
+      success:
+        type: boolean
+      message:
+        type: string
+      context:
+        type: object
+  read_only: true
+  destructive: false
+  idempotent: true
+  execution: sync
+  affinity: any
+  source_file: scripts/inspect_renderer.py
+  annotations:
+    read_only_hint: true
+    destructive_hint: false
+    idempotent_hint: true
 - name: inspect_mesh_baker
   description: Read bounded installed official Color or Position baker help without caller-selected executables or command arguments.
   input_schema:
@@ -226,6 +252,10 @@ tools:
       normal_convention:
         type: string
         enum: ['OpenGL (+Y)', 'DirectX (-Y)']
+      engine:
+        type: string
+        enum: [sse2, neon, d3d11, vk, ogl3, mtl]
+        default: sse2
       timeout_seconds:
         type: integer
         minimum: 1

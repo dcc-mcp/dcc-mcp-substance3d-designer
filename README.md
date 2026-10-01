@@ -141,6 +141,15 @@ It records actual source/archive/tool hashes. The cooker reads an owned snapshot
 beside the original SBS, so its directory must be writable. Relative dependencies
 retain that directory; their hashes are not separately collected.
 
+`inspect_renderer` reads installed official render help and engine library
+identities. `render_archive` accepts only documented engine identifiers:
+`sse2` (default), `neon`, `d3d11`, `vk`, `ogl3` and `mtl`. The selected installed
+library is resolved and hash-pinned; missing or ambiguous engines fail without
+CPU fallback. Native warnings and the selected library hash remain in the
+manifest. GPU-only graphs, including native 3D Perlin noise, require an actual
+GPU render; inspecting a library does not establish hardware acceptance. See
+[Adobe's renderer options](https://adobedocs.github.io/substance-automation-toolkit/pysbs/sat_commandlines/sbsrender_options.html).
+
 `bake_position_map` uses installed `substance3d_baker` for a hash-pinned,
 self-contained triangulated OBJ with positive UV0 indices and one UV tile.
 It bakes bbox-normalized XYZ into Raw EXR twice, records native padding,

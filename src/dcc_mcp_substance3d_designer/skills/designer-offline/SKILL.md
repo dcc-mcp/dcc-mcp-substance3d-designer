@@ -13,8 +13,8 @@ metadata:
     version: "0.8.1" # x-release-please-version
     layer: task
     stage: production
-    search-hint: "offline substance designer cook SBS SBSAR render CLI maps headless mesh baker color material vertex IDs position artifacts"
-    tags: "substance,designer,offline,cook,render,baker,color-id,position,artifacts"
+    search-hint: "offline substance designer cook SBS SBSAR render CLI GPU engine d3d11 Vulkan maps headless mesh baker color material vertex IDs position artifacts"
+    tags: "substance,designer,offline,cook,render,gpu,engine,baker,color-id,position,artifacts"
     tools: tools.yaml
 ---
 
@@ -33,6 +33,14 @@ pass shell commands, install software or control a GUI.
 3. `render_archive` requires the exact complete output set (one to eight
    channels), each channel's bit depth and color space and expected resolution.
    Optional image inputs require their actual SHA256 and color space.
+   `engine` defaults to `sse2`; documented identifiers `neon`, `d3d11`, `vk`,
+   `ogl3` and `mtl` are available when exactly one matching installed library
+   exists. The adapter resolves and hashes that fixed library before execution,
+   passes its exact path to the renderer, verifies the hash afterwards, and
+   preserves warnings. There is no automatic CPU fallback or caller-selected
+   DLL path. GPU-only nodes such as 3D Perlin require an actual GPU render.
+   `inspect_renderer` reads fixed native render help and installed engine
+   identities. Library availability alone does not prove GPU execution.
 4. `bake_position_map` requires a self-contained, triangulated OBJ with positive
    UV0 indices and one normalized UV tile. It uses installed
    `substance3d_baker` to bake bbox-normalized XYZ/Raw EXR twice. Configure the
@@ -60,6 +68,8 @@ anatomy. Vertex colour interpolation and native ray projection can introduce
 boundary pixels; keep native warnings and verify the intended region palette.
 For material colours, the installed native baker requires FBX. See Adobe's
 [official baker options](https://adobedocs.github.io/substance-automation-toolkit/pysbs/sat_commandlines/substance3d_baker_options.html).
+Engine identifiers follow Adobe's
+[official renderer options](https://adobedocs.github.io/substance-automation-toolkit/pysbs/sat_commandlines/sbsrender_options.html).
 
 Raw covers linear data such as roughness, height and normals; declare sRGB for
 color only when that is the source graph's intended encoding. Tangent normal

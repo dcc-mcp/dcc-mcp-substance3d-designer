@@ -253,7 +253,11 @@ def test_async_output_contract_accepts_the_real_core_poll_envelope():
         "core_poll": {"owner": "core", "tool": "jobs_get_status"},
     }
     for tool in tools:
-        jsonschema.validate(queued, tool["output_schema"])
+        if tool["execution"] == "async":
+            jsonschema.validate(queued, tool["output_schema"])
+        else:
+            with pytest.raises(jsonschema.ValidationError):
+                jsonschema.validate(queued, tool["output_schema"])
         jsonschema.validate({"success": True, "message": "Finished", "context": {}}, tool["output_schema"])
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate({"status": "success"}, tool["output_schema"])

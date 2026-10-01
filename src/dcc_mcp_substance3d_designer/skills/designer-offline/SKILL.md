@@ -26,8 +26,9 @@ pass shell commands, install software or control a GUI.
 
 1. Hash the actual input bytes and choose a fresh output directory.
 2. `cook_package` cooks one SBS source and records the source, archive and tool
-   hashes. Relative source dependencies keep their original locations; their
-   hashes are **not** independently collected.
+   hashes. The cooker reads a pinned temporary SBS beside the original input;
+   that directory must be writable. Relative dependency paths keep that directory,
+   but their hashes are **not** independently collected.
 3. `render_archive` requires the exact complete output set (one to eight
    channels), each channel's bit depth and color space and expected resolution.
    Optional image inputs require their actual SHA256 and color space.

@@ -168,21 +168,35 @@ def cook_package(
         staging = Path(temporary) / "artifacts"
         staging.mkdir()
         _snapshot(source, staging / "source.sbs", expected_source_sha256)
-        # Preserve relative source dependencies by cooking at the original path.
-        command = [
-            str(executable),
-            "--inputs",
-            str(source),
-            "--output-path",
-            str(staging),
-            "--output-name",
-            "material",
-            "--consistent-header",
-            "1",
-            "--size-limit",
-            str(max_resolution.bit_length() - 1),
-        ]
-        run_artifact_command(command, staging / "cook.log", timeout=timeout_seconds)
+        # Read an owned snapshot in the original dependency directory.
+        verified_source = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                dir=source.parent, prefix=".designer-cook-pinned-", suffix=".sbs", delete=False
+            ) as handle:
+                verified_source = Path(handle.name)
+                handle.write((staging / "source.sbs").read_bytes())
+            if _sha(verified_source) != expected_source_sha256:
+                _error("Cook snapshot changed before native execution", "INPUT_HASH_CHANGED")
+            command = [
+                str(executable),
+                "--inputs",
+                str(verified_source),
+                "--output-path",
+                str(staging),
+                "--output-name",
+                "material",
+                "--consistent-header",
+                "1",
+                "--size-limit",
+                str(max_resolution.bit_length() - 1),
+            ]
+            run_artifact_command(command, staging / "cook.log", timeout=timeout_seconds)
+            if _sha(verified_source) != expected_source_sha256:
+                _error("Cook snapshot changed during native execution", "INPUT_HASH_CHANGED")
+        finally:
+            if verified_source is not None:
+                verified_source.unlink(missing_ok=True)
         if _sha(source) != expected_source_sha256 or _sha(executable) != tool_hash:
             _error("Source or configured tool changed during cooking", "INPUT_HASH_CHANGED")
         archive = _file(staging / "material.sbsar")

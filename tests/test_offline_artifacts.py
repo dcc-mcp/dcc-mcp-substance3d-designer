@@ -140,19 +140,45 @@ def test_cook_hashes_actual_archive_and_keeps_source_relative_dependency_context
     source = Path(render_request["archive_path"]).with_suffix(".sbs")
     source.write_bytes(b"test-only SBS source")
     source_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+    native_sources = []
 
     def cook(command, log, **kwargs):
-        assert command[command.index("--inputs") + 1] == str(source)
+        native_source = Path(command[command.index("--inputs") + 1])
+        native_sources.append(native_source)
+        assert native_source != source and native_source.parent == source.parent
+        assert native_source.read_bytes() == source.read_bytes()
         assert kwargs["timeout"] == 300
         output = Path(command[command.index("--output-path") + 1])
         assert (output / "source.sbs").read_bytes() == source.read_bytes()
-        (output / "material.sbsar").write_bytes(b"actual fake-runner output")
+        # A mutable original cannot determine what the cooker actually reads.
+        original = source.read_bytes()
+        source.write_bytes(b"transient unpinned edit")
+        (output / "material.sbsar").write_bytes(native_source.read_bytes())
+        source.write_bytes(original)
         log.write_text("test fake process log")
 
     monkeypatch.setattr(offline, "run_artifact_command", cook)
     result = offline.cook_package(str(source), source_sha, render_request["output_dir"])
-    assert result["artifact"]["archive"]["sha256"] == hashlib.sha256(b"actual fake-runner output").hexdigest()
+    assert result["artifact"]["archive"]["sha256"] == source_sha
     assert result["artifact"]["source_dependency_hashes_collected"] is False
+    assert all(not path.exists() for path in native_sources)
+
+
+def test_failed_cook_removes_only_its_owned_source_snapshot(render_request, monkeypatch):
+    source = Path(render_request["archive_path"]).with_suffix(".sbs")
+    source.write_bytes(b"test-only SBS source")
+    native_sources = []
+
+    def fail(command, log, **kwargs):
+        native_sources.append(Path(command[command.index("--inputs") + 1]))
+        raise GraphAuthoringError("test native failure", "OFFLINE_PROCESS_FAILED")
+
+    monkeypatch.setattr(offline, "run_artifact_command", fail)
+    with pytest.raises(GraphAuthoringError, match="test native failure"):
+        offline.cook_package(str(source), hashlib.sha256(source.read_bytes()).hexdigest(), render_request["output_dir"])
+    assert source.read_bytes() == b"test-only SBS source"
+    assert native_sources and all(not path.exists() for path in native_sources)
+    assert not Path(render_request["output_dir"]).exists()
 
 
 def test_fixed_archive_does_not_silently_accept_an_unexposed_seed(render_request, monkeypatch):

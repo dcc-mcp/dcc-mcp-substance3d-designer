@@ -137,8 +137,9 @@ embedded Designer service. Existing GUI sessions can also load this skill when
 their operator configures `DCC_MCP_SUBSTANCE3D_DESIGNER_BIN`.
 
 `cook_package` takes an SBS path, its expected SHA256 and a fresh output directory.
-It records actual source/archive/tool hashes. Relative source dependencies are
-resolved at the original SBS location; their hashes are not separately collected.
+It records actual source/archive/tool hashes. The cooker reads an owned snapshot
+beside the original SBS, so its directory must be writable. Relative dependencies
+retain that directory; their hashes are not separately collected.
 `render_archive` takes an SBSAR path and hash, a graph identifier, the **complete**
 output set, a fresh directory and expected resolution. For example:
 

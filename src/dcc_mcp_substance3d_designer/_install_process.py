@@ -24,6 +24,8 @@ _MAX_PROBE_TIMEOUT_SECONDS = 30.0
 _MAX_POSIX_PROCESS_ID_DIGITS = 20
 _MAX_PROCESS_CLEANUP_RESERVE_SECONDS = 2.0
 _MIN_PROCESS_CLEANUP_RESERVE_SECONDS = 0.05
+_MAX_STATUS_SHARING_RETRY_SECONDS = 0.5
+_WINDOWS_SHARING_ERRORS = {32, 33}
 _POSIX_SIGKILL = getattr(signal, "SIGKILL", 9)
 _PROC_PIDTBSDINFO = 3
 _DARWIN_PROCESS_STATUS_ZOMBIE = 5
@@ -619,12 +621,23 @@ def _start_owned_process(
 
 
 def _read_supervisor_status(path: Path, *, deadline: Optional[float] = None) -> Optional[Dict[str, Any]]:
-    if deadline is not None and _deadline_expired(deadline):
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (FileNotFoundError, OSError, ValueError):
-        return None
+    sharing_deadline = time.monotonic() + _MAX_STATUS_SHARING_RETRY_SECONDS
+    if deadline is not None:
+        sharing_deadline = min(sharing_deadline, deadline)
+    while True:
+        if deadline is not None and _deadline_expired(deadline):
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            break
+        except OSError as exc:
+            # Atomic publication can still be briefly locked by Windows file
+            # inspection. Retry only sharing violations, within the same budget.
+            if getattr(exc, "winerror", None) not in _WINDOWS_SHARING_ERRORS or _deadline_expired(sharing_deadline):
+                return None
+            time.sleep(min(0.02, _deadline_remaining(sharing_deadline)))
+        except ValueError:
+            return None
     if deadline is not None and _deadline_expired(deadline):
         return None
     return payload if isinstance(payload, dict) else None

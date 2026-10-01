@@ -71,10 +71,10 @@ def bake_color_map(
 ) -> dict:
     """Bake caller-authored FBX vertex/material colours twice using UV0.
 
-Uses the exact same owned mesh as low and high geometry. The native projection
-distances are explicit bbox fractions, and mip diffusion is disabled. This is
-not anatomy recognition or an independently parsed topology acceptance.
-"""
+    Uses the exact same owned mesh as low and high geometry. The native projection
+    distances are explicit bbox fractions, and mip diffusion is disabled. This is
+    not anatomy recognition or an independently parsed topology acceptance.
+    """
     if (
         color_source not in _COLOR_SOURCES
         or type(resolution) is not int
@@ -99,22 +99,46 @@ not anatomy recognition or an independently parsed topology acceptance.
             target = staging / attempt
             target.mkdir()
             command = [
-                str(executable), "Color.Raytraced", "--inputs", str(snapshot),
-                "--cpu", "--base.uv_set", "0", "--use_lowdef_as_highdef", "true",
-                "--color_source", color_source, "--projection.normalized_distance", "true",
-                "--projection.max_height", "0.0001", "--projection.max_depth", "0.0001",
-                "--projection.smooth_normals", "false", "--output_format", "png",
-                "--output_size", f"{resolution},{resolution}", "--output_name", "ColorID",
-                "--output_path", str(target), "--padding_radius", str(padding_radius),
-                "--enable_mip_diffusion", "false", "--texture_cache_size", "1024",
+                str(executable),
+                "Color.Raytraced",
+                "--inputs",
+                str(snapshot),
+                "--cpu",
+                "--base.uv_set",
+                "0",
+                "--use_lowdef_as_highdef",
+                "true",
+                "--color_source",
+                color_source,
+                "--projection.normalized_distance",
+                "true",
+                "--projection.max_height",
+                "0.0001",
+                "--projection.max_depth",
+                "0.0001",
+                "--projection.smooth_normals",
+                "false",
+                "--output_format",
+                "png",
+                "--output_size",
+                f"{resolution},{resolution}",
+                "--output_name",
+                "ColorID",
+                "--output_path",
+                str(target),
+                "--padding_radius",
+                str(padding_radius),
+                "--enable_mip_diffusion",
+                "false",
+                "--texture_cache_size",
+                "1024",
             ]
             log = staging / (attempt + ".log")
             try:
                 run_artifact_command(command, log, timeout=timeout_seconds)
             except GraphAuthoringError as exc:
                 native = log.read_text(encoding="utf-8")[-2048:] if log.is_file() else "Native log unavailable"
-                raise GraphAuthoringError(str(exc) + "; native diagnostic: " + native,
-                                          exc.code) from exc
+                raise GraphAuthoringError(str(exc) + "; native diagnostic: " + native, exc.code) from exc
             lines = log.read_text(encoding="utf-8").splitlines()
             warnings.extend({"attempt": attempt, "message": line} for line in lines if "[WARNING]" in line)
             if any("[ERROR]" in line for line in lines):
@@ -143,8 +167,13 @@ not anatomy recognition or an independently parsed topology acceptance.
             "resolution": resolution,
             "padding_radius": padding_radius,
             "uv_set": 0,
-            "projection": {"use_lowdef_as_highdef": True, "normalized_distance": True,
-                           "max_height": .0001, "max_depth": .0001, "smooth_normals": False},
+            "projection": {
+                "use_lowdef_as_highdef": True,
+                "normalized_distance": True,
+                "max_height": 0.0001,
+                "max_depth": 0.0001,
+                "smooth_normals": False,
+            },
             "native_rerender_exact": True,
             "native_warnings": warnings,
             "native_argv": commands,

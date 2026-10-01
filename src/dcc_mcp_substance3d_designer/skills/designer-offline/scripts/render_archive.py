@@ -20,6 +20,7 @@ def main(
     input_images: list[dict] | None = None,
     normal_convention: str | None = None,
     timeout_seconds: int = 300,
+    engine: str = "sse2",
     **_kwargs,
 ):
     return typed_result(
@@ -35,6 +36,7 @@ def main(
         input_images,
         normal_convention,
         timeout_seconds,
+        engine,
     )
 
 

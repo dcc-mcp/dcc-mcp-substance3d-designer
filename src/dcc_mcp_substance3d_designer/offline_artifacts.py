@@ -24,7 +24,7 @@ from .render_process import run_artifact_command
 _HASH = re.compile(r"[0-9a-f]{64}")
 _IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,127}")
 _MAX_BYTES = 128 * 1024 * 1024
-_RESOLUTIONS = (256, 512, 1024, 2048, 4096)
+_RESOLUTIONS = (256, 512, 1024, 2048, 4096, 8192)
 _ENGINES = ("sse2", "neon", "d3d11", "vk", "ogl3", "mtl")
 
 

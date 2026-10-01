@@ -119,7 +119,7 @@ dialog.
 
 ## Bundled skills
 
-### Offline SBS/SBSAR artifacts
+### Offline SBS/SBSAR and mesh-position artifacts
 
 With official `sbscooker` and `sbsrender` already installed, start the independent
 artifact service without opening Designer:
@@ -140,6 +140,16 @@ their operator configures `DCC_MCP_SUBSTANCE3D_DESIGNER_BIN`.
 It records actual source/archive/tool hashes. The cooker reads an owned snapshot
 beside the original SBS, so its directory must be writable. Relative dependencies
 retain that directory; their hashes are not separately collected.
+
+`bake_position_map` uses installed `substance3d_baker` for a hash-pinned,
+self-contained triangulated OBJ with positive UV0 indices and one UV tile.
+It bakes bbox-normalized XYZ into Raw EXR twice, records native padding,
+warnings and argv, and verifies every RGB float sample through installed FFmpeg.
+Supply `--ffmpeg "/path/to/installed/ffmpeg"` on the standalone service or set
+`DCC_MCP_SUBSTANCE3D_DESIGNER_FFMPEG`. No decoder is downloaded or installed.
+Actual mesh/UV correspondence and complete coverage remain caller audits;
+native warnings are retained without being treated as proof of coverage.
+
 `render_archive` takes an SBSAR path and hash, a graph identifier, the **complete**
 output set, a fresh directory and expected resolution. For example:
 
@@ -177,7 +187,7 @@ outside Designer.
 | --- | --- |
 | `designer-session` | Core graph authoring: nodes, connections, parameters, outputs, packages, resources, map export, SBSAR. |
 | `designer-diagnostics` | Read-only readiness probe proving main-thread dispatch works. |
-| `designer-offline` | Hash-pinned official CLI SBS cooking and twice-verified SBSAR map artifacts without a GUI. |
+| `designer-offline` | Hash-pinned CLI SBS cooking, twice-verified SBSAR maps and native mesh-position EXR artifacts without a GUI. |
 | `designer-effects` | **Experimental** - procedural effect recipes: blur, warp, levels, sharpen, edge detect, blend, mask, and ordered chains. Recipes resolve at runtime; see the note below. |
 | `designer-lighting` | **Experimental** - lighting-response maps: normal, ambient occlusion, curvature, thickness, emissive. Recipes resolve at runtime; see the note below. |
 | `designer-particles` | Seed-variation tiles and sprite-sheet atlas packing for downstream particle systems. |

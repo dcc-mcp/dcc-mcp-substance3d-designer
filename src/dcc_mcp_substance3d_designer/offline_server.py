@@ -38,9 +38,15 @@ class DesignerOfflineServer(DccServerBase):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--designer-bin", type=Path, required=True)
+    parser.add_argument("--ffmpeg", type=Path, help="Installed decoder for complete normalized Position EXR readback")
     parser.add_argument("--port", type=int)
     args = parser.parse_args()
     os.environ["DCC_MCP_SUBSTANCE3D_DESIGNER_BIN"] = str(args.designer_bin.expanduser().resolve(strict=True))
+    if args.ffmpeg is not None:
+        decoder = args.ffmpeg.expanduser().resolve(strict=True)
+        if not decoder.is_file():
+            parser.error("--ffmpeg must name an installed decoder executable")
+        os.environ["DCC_MCP_SUBSTANCE3D_DESIGNER_FFMPEG"] = str(decoder)
     installed_tool("sbscooker")
     installed_tool("sbsrender")
     server = DesignerOfflineServer(args.port)

@@ -248,7 +248,7 @@ def render_archive(
         names.add(name.casefold())
     images, names = [], set()
     if input_images is not None and (not isinstance(input_images, list) or len(input_images) > 8):
-        _error("Select up to eight explicit PNG inputs")
+        _error("Select up to eight explicit PNG or normalized position EXR inputs")
     for item in input_images or []:
         if not isinstance(item, dict) or set(item) != {"name", "path", "sha256", "color_space"}:
             _error("Each image requires name, path, sha256 and color_space")
@@ -256,11 +256,19 @@ def render_archive(
         if name.casefold() in names or item["color_space"] not in ("Raw", "sRGB"):
             _error("Input names must be unique and color spaces explicit")
         names.add(name.casefold())
-        path = _pinned(item["path"], item["sha256"], ".png")
-        metadata = read_image_metadata(path, "png", None)
+        suffix = Path(item["path"]).suffix.lower()
+        if suffix not in (".png", ".exr") or (suffix == ".exr" and item["color_space"] != "Raw"):
+            _error("EXR inputs require explicit Raw normalized position data")
+        path = _pinned(item["path"], item["sha256"], suffix)
+        metadata = read_image_metadata(path, suffix[1:], None)
         if metadata["width"] != metadata["height"] or metadata["width"] not in _RESOLUTIONS:
             _error("Image input must be square and within the resolution budget")
-        verify_png(path, int(metadata["bit_depth"]), metadata["width"])
+        if suffix == ".png":
+            verify_png(path, int(metadata["bit_depth"]), metadata["width"])
+        else:
+            from .position_artifacts import verify_position_exr
+
+            verify_position_exr(path, metadata["width"], tempfile.gettempdir(), timeout_seconds)
         images.append((item, path))
     archive = _pinned(archive_path, expected_archive_sha256, ".sbsar")
     executable = installed_tool("sbsrender")
@@ -272,7 +280,9 @@ def render_archive(
         snapshot = staging / "material.sbsar"
         _snapshot(archive, snapshot, expected_archive_sha256)
         interface_log = staging / "archive-info.log"
-        run_artifact_command([str(executable), "info", "--input", str(snapshot)], interface_log, timeout=30)
+        run_artifact_command(
+            [str(executable), "info", "--input", str(snapshot)], interface_log, timeout=timeout_seconds
+        )
         interface = interface_log.read_text(encoding="utf-8")
         blocks = re.split(r"(?m)^GRAPH-URL ", interface)
         selected = [block for block in blocks[1:] if block.splitlines()[0].strip() == "pkg://" + graph_identifier]
@@ -288,7 +298,7 @@ def render_archive(
             _error("Image input is not exposed by the compiled graph", "ARCHIVE_INTERFACE_CHANGED")
         input_files = []
         for item, path in images:
-            target = staging / ("input_" + item["name"] + ".png")
+            target = staging / ("input_" + item["name"] + path.suffix.lower())
             _snapshot(path, target, item["sha256"])
             input_files.append((item, target))
         files = []

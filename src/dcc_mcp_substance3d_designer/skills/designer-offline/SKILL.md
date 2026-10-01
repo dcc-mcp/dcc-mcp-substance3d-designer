@@ -2,9 +2,10 @@
 name: designer-offline
 description: >-
   Offline artifact skill - cook hash-pinned SBS sources and render compiled
-  SBSAR maps with installed official Substance tools without a Designer GUI.
+  SBSAR maps and bake pinned UV0 mesh positions with installed official
+  Substance tools without a Designer GUI.
 license: MIT
-compatibility: "Installed sbscooker/sbsrender; dcc-mcp-core 0.20.15+"
+compatibility: "Installed sbscooker/sbsrender; optional substance3d_baker/FFmpeg for positions; dcc-mcp-core 0.20.15+"
 allowed-tools: Python
 metadata:
   dcc-mcp:
@@ -32,7 +33,13 @@ pass shell commands, install software or control a GUI.
 3. `render_archive` requires the exact complete output set (one to eight
    channels), each channel's bit depth and color space and expected resolution.
    Optional image inputs require their actual SHA256 and color space.
-4. Read the returned manifest. Every PNG has complete chunk/checksum/scanline
+4. `bake_position_map` requires a self-contained, triangulated OBJ with positive
+   UV0 indices and one normalized UV tile. It uses installed
+   `substance3d_baker` to bake bbox-normalized XYZ/Raw EXR twice. Configure the
+   installed decoder through `DCC_MCP_SUBSTANCE3D_DESIGNER_FFMPEG`; every RGB
+   float sample must be finite and between zero and one. Native padding is
+   explicit, mip diffusion is disabled, and native warnings/argv are retained.
+5. Read the returned manifest. Every PNG has complete chunk/checksum/scanline
    validation. Two official renders must have identical actual bytes before
    the output directory is published.
 
@@ -42,6 +49,12 @@ conventions are caller declarations, not inferred from RGB samples. This tool
 does not assign displacement units, identify anatomy or validate a downstream
 shader. Constant channels are legal. Never call offline success a live Designer
 SDK/session acceptance or claim independently pinned source dependencies.
+
+EXR image inputs are restricted to normalized position data with explicit Raw
+color space and complete float readback. Position baking does not establish
+mesh/UV correspondence or complete UV coverage: the caller must audit these
+against its actual indexed artist geometry. Native warnings are evidence, not
+automatically ignored diagnostics. No input mesh or UV coordinates are edited.
 
 Seed overrides are optional and require an exposed `$randomseed` input in the
 compiled interface. Unknown image inputs are rejected. Fixed compiled defaults

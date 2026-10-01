@@ -36,6 +36,7 @@ def run_artifact_command(command: list[str], log: Path, *, timeout: int = 300) -
     text = str(result.get("stdout", "")) + "\n" + str(result.get("stderr", ""))
     log.write_text(text, encoding="utf-8")
     if not result.get("success") or "[ERROR]" in text:
+        detail = str(result.get("reason") or "native return code " + str(result.get("returncode", "unavailable")))[:512]
         raise GraphAuthoringError(
-            "Official CLI failed, timed out or could not verify cleanup", "OFFLINE_PROCESS_FAILED"
+            "Official CLI failed, timed out or could not verify cleanup: " + detail, "OFFLINE_PROCESS_FAILED"
         )

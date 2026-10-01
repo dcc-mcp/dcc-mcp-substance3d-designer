@@ -37,7 +37,10 @@ def test_bounded_installed_baker_help_has_tool_identity(tmp_path, monkeypatch):
 
     monkeypatch.setattr(color, "run_artifact_command", help_command)
     receipt = color.inspect_mesh_baker()
-    assert receipt["baker"] == "Color.Raytraced" and receipt["tool"]["sha256"] == hashlib.sha256(executable.read_bytes()).hexdigest()
+    assert (
+        receipt["baker"] == "Color.Raytraced"
+        and receipt["tool"]["sha256"] == hashlib.sha256(executable.read_bytes()).hexdigest()
+    )
     with pytest.raises(GraphAuthoringError):
         color.inspect_mesh_baker("arbitrary command")
 
@@ -71,7 +74,10 @@ def test_changed_native_input_or_pixels_cannot_publish(tmp_path, monkeypatch, de
     def bake(command, log, **kwargs):
         native = Path(command[command.index("--inputs") + 1])
         target = Path(command[command.index("--output_path") + 1])
-        _png(target / "ColorID.png", (10 if target.name == "maps" else 20, 30, 40) if defect == "rerender" else (10, 30, 40))
+        _png(
+            target / "ColorID.png",
+            (10 if target.name == "maps" else 20, 30, 40) if defect == "rerender" else (10, 30, 40),
+        )
         if defect == "snapshot":
             native.write_bytes(b"changed owned input")
         elif defect == "header":
@@ -113,7 +119,10 @@ def test_requested_native_color_attribute_missing_cannot_publish(tmp_path, monke
 def test_retained_native_png_is_complete_16_bit_not_silently_quantized():
     fixture = Path(__file__).parent / "fixtures/native-color"
     png = fixture / "ColorID.png"
-    assert hashlib.sha256(png.read_bytes()).hexdigest() == "df8739b04319fa72dfc2e51df9bc911a2994fd3bc276090f9f8ef12bf09b311a"
+    assert (
+        hashlib.sha256(png.read_bytes()).hexdigest()
+        == "df8739b04319fa72dfc2e51df9bc911a2994fd3bc276090f9f8ef12bf09b311a"
+    )
     metadata = color.verify_png(png, 16, 256)
     assert metadata["channels"] == 4 and metadata["bit_depth"] == "16"
     with pytest.raises(GraphAuthoringError):
@@ -123,7 +132,10 @@ def test_retained_native_png_is_complete_16_bit_not_silently_quantized():
 def test_launch_failure_keeps_the_bounded_process_reason(tmp_path, monkeypatch):
     from dcc_mcp_substance3d_designer import render_process
 
-    monkeypatch.setattr(render_process, "_run_bounded_command_in_root",
-                        lambda *args, **kwargs: {"success": False, "reason": "launch failed: PermissionError"})
+    monkeypatch.setattr(
+        render_process,
+        "_run_bounded_command_in_root",
+        lambda *args, **kwargs: {"success": False, "reason": "launch failed: PermissionError"},
+    )
     with pytest.raises(GraphAuthoringError, match="PermissionError"):
         render_process.run_artifact_command(["test-only-unexecuted"], tmp_path / "error.log")

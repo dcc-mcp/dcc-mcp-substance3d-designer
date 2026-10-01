@@ -189,6 +189,43 @@ def test_fixed_archive_does_not_silently_accept_an_unexposed_seed(render_request
     assert not Path(render_request["output_dir"]).exists()
 
 
+def test_image_readback_validates_the_snapshot_used_by_native_render(render_request, monkeypatch):
+    source = Path(render_request["archive_path"]).with_suffix(".png")
+    data = _png()
+    source.write_bytes(data)
+    checked = []
+    verify = offline.verify_png
+
+    def readback(path, *args):
+        assert path != source
+        # Changing the mutable caller input cannot change validated/rendered pixels.
+        source.write_bytes(b"transient unpinned caller edit")
+        try:
+            result = verify(path, *args)
+            checked.append(path)
+            return result
+        finally:
+            source.write_bytes(data)
+
+    def native(command, log, **kwargs):
+        _render(command, log, **kwargs)
+        if command[1] == "info":
+            with log.open("a") as stream:
+                stream.write("  INPUT Position IMAGE\n")
+
+    monkeypatch.setattr(offline, "verify_png", readback)
+    monkeypatch.setattr(offline, "run_artifact_command", native)
+    result = offline.render_archive(
+        **render_request,
+        input_images=[
+            {"name": "Position", "path": str(source), "sha256": hashlib.sha256(data).hexdigest(), "color_space": "Raw"}
+        ],
+    )
+    assert checked[0].name == "input_Position.png"
+    assert result["artifact"]["native_rerender_exact"]
+    assert source.read_bytes() == data
+
+
 def test_standalone_options_never_bind_an_optional_gui_pid(monkeypatch):
     from dcc_mcp_core.server_base import DccServerBase
 

@@ -160,6 +160,9 @@ def bake_position_map(
         staging.mkdir()
         snapshot = staging / "mesh.obj"
         _snapshot(mesh, snapshot, expected_mesh_sha256)
+        # Validate the exact owned bytes passed to the baker, including the
+        # semantic mesh counts/bounds recorded in its receipt.
+        topology = _mesh(snapshot)
         commands, warnings, readbacks = [], [], []
         for attempt in ("maps", "readback"):
             target = staging / attempt

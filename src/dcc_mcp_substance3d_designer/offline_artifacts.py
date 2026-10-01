@@ -263,12 +263,6 @@ def render_archive(
         metadata = read_image_metadata(path, suffix[1:], None)
         if metadata["width"] != metadata["height"] or metadata["width"] not in _RESOLUTIONS:
             _error("Image input must be square and within the resolution budget")
-        if suffix == ".png":
-            verify_png(path, int(metadata["bit_depth"]), metadata["width"])
-        else:
-            from .position_artifacts import verify_position_exr
-
-            verify_position_exr(path, metadata["width"], tempfile.gettempdir(), timeout_seconds)
         images.append((item, path))
     archive = _pinned(archive_path, expected_archive_sha256, ".sbsar")
     executable = installed_tool("sbsrender")
@@ -300,6 +294,17 @@ def render_archive(
         for item, path in images:
             target = staging / ("input_" + item["name"] + path.suffix.lower())
             _snapshot(path, target, item["sha256"])
+            metadata = read_image_metadata(target, path.suffix.lower()[1:], None)
+            if metadata["width"] != metadata["height"] or metadata["width"] not in _RESOLUTIONS:
+                _error("Owned image input exceeds its resolution budget")
+            if path.suffix.lower() == ".png":
+                verify_png(target, int(metadata["bit_depth"]), metadata["width"])
+            else:
+                from .position_artifacts import verify_position_exr
+
+                verify_position_exr(target, metadata["width"], staging, timeout_seconds)
+            if _sha(target) != item["sha256"]:
+                _error("Owned image snapshot changed during readback", "INPUT_HASH_CHANGED")
             input_files.append((item, target))
         files = []
         for attempt in ("maps", "readback"):
@@ -347,6 +352,10 @@ def render_archive(
                     ]
                 )
             run_artifact_command(command, staging / (attempt + ".log"), timeout=timeout_seconds)
+            if _sha(snapshot) != expected_archive_sha256 or any(
+                _sha(path) != item["sha256"] for item, path in input_files
+            ):
+                _error("Owned archive/image snapshot changed during native rendering", "INPUT_HASH_CHANGED")
             if {path.name for path in target.iterdir()} != {item["name"] + ".png" for item in outputs}:
                 _error("Native archive outputs differ from the exact declared channel set", "OFFLINE_OUTPUT_MISSING")
             for item in outputs:

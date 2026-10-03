@@ -77,6 +77,22 @@ def test_pinned_render_publishes_complete_verified_files_and_accepts_constants(r
     assert not list(Path(result["output_dir"]).parent.glob(".designer-render-*"))
 
 
+def test_explicit_8k_request_cannot_publish_smaller_native_outputs(render_request, monkeypatch):
+    render_request["resolution"] = 8192
+    monkeypatch.setattr(offline, "run_artifact_command", _render)
+    with pytest.raises(GraphAuthoringError, match="dimensions"):
+        offline.render_archive(**render_request)
+    assert not Path(render_request["output_dir"]).exists()
+
+
+def test_unbounded_16k_request_cannot_launch_a_native_process(render_request, monkeypatch):
+    render_request["resolution"] = 16384
+    monkeypatch.setattr(offline, "run_artifact_command", lambda *_args, **_kwargs: pytest.fail("Unbounded request"))
+    with pytest.raises(GraphAuthoringError, match="resolution"):
+        offline.render_archive(**render_request)
+    assert not Path(render_request["output_dir"]).exists()
+
+
 def test_gpu_engine_is_a_fixed_installed_hashed_library(render_request, monkeypatch):
     engine = Path(render_request["archive_path"]).parent / "plugins/engines/substance_d3d11_blend.dll"
     engine.write_bytes(b"test-only fixed GPU engine identity")

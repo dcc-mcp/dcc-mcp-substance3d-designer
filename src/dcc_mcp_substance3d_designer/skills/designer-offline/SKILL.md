@@ -96,3 +96,11 @@ deadline; malformed receipts and other file errors remain failures. CLI log
 cleanup shares that same deadline and retains native diagnostics before removal.
 Graph authoring through the Designer SDK
 continues to use `designer-session` on a running GUI instance.
+
+8K is an explicit optional resolution for cooking, rendering and Position/Color
+baking. Defaults are unchanged. 8K has four times the texels of 4K; complete
+32-bit RGB decoding alone requires 0.75 GiB before validation copies and native
+engine allocations. Engine support and available memory require actual native
+execution. Lower native output dimensions are rejected, never relabelled as 8K.
+The existing 128 MiB per-file input limit remains enforced. Coverage and seam
+acceptance remain the caller's responsibility at the actual requested resolution.

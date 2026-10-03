@@ -77,7 +77,7 @@ tools:
         default: vertex
       resolution:
         type: integer
-        enum: [256, 512, 1024, 2048, 4096]
+        enum: [256, 512, 1024, 2048, 4096, 8192]
         default: 2048
       padding_radius:
         type: integer
@@ -142,7 +142,7 @@ tools:
         minLength: 1
       max_resolution:
         type: integer
-        enum: [256, 512, 1024, 2048, 4096]
+        enum: [256, 512, 1024, 2048, 4096, 8192]
         default: 2048
       timeout_seconds:
         type: integer
@@ -223,7 +223,7 @@ tools:
               enum: [Raw, sRGB]
       resolution:
         type: integer
-        enum: [256, 512, 1024, 2048, 4096]
+        enum: [256, 512, 1024, 2048, 4096, 8192]
         default: 1024
       seed:
         type: integer
@@ -325,6 +325,7 @@ tools:
         - 1024
         - 2048
         - 4096
+        - 8192
         default: 2048
       padding_radius:
         type: integer

@@ -45,6 +45,17 @@ The crate is a reference-guided modeling and lookdev study. Its proportions,
 board UVs and hardware were authored in Blender; it is not a scan of the
 generated image. The material screenshots use the project's DCC-CUA route.
 
+## Typed RGBA gradient edits
+
+`designer-session` exposes `get_gradient_keys` and `set_gradient_keys` for native
+`sbs::compositing::gradient` nodes. Inspect the current node and graph IDs first;
+the setter requires the exact graph UID and 2..64 strictly increasing keys.
+Positions, RGBA channels and midpoints must be finite values in 0..1.
+It uses public SDK array/struct values, verifies native readback, and restores the
+previous gradient when verification fails. See the skill's call example for a
+three-stop color ramp. Other node types and connected/function-driven inputs
+are rejected; native readback may include float32 rounding.
+
 ## Agent workflow
 
 AI agents should use the shared gateway through `dcc-mcp-cli`; IDE users may

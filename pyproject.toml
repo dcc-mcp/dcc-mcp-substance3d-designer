@@ -26,6 +26,7 @@ dependencies = ["dcc-mcp-core>=0.20.15,<1.0.0"]
 
 [project.scripts]
 dcc-mcp-substance3d-designer = "dcc_mcp_substance3d_designer.install_cli:main"
+dcc-mcp-designer-offline = "dcc_mcp_substance3d_designer.offline_server:main"
 
 [project.optional-dependencies]
 dev = ["build", "jsonschema>=4.23", "packaging>=24.0", "pytest>=7.0", "ruff>=0.8.0", "twine", "pyyaml>=6.0"]

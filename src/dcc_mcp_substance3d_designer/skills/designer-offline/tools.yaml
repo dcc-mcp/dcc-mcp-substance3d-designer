@@ -1,0 +1,252 @@
+tools:
+- name: cook_package
+  description: Cook one hash-pinned SBS source with installed official sbscooker into a fresh verified artifact directory.
+  input_schema:
+    type: object
+    additionalProperties: false
+    required: [source_path, expected_source_sha256, output_dir]
+    properties:
+      source_path:
+        type: string
+        minLength: 1
+      expected_source_sha256:
+        type: string
+        pattern: '^[0-9a-f]{64}$'
+      output_dir:
+        type: string
+        minLength: 1
+      max_resolution:
+        type: integer
+        enum: [256, 512, 1024, 2048, 4096]
+        default: 2048
+      timeout_seconds:
+        type: integer
+        minimum: 1
+        maximum: 600
+        default: 300
+  output_schema:
+    type: object
+    oneOf:
+    - required: [success, message]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    - required: [job_id, core_job_id, job_id_owner, status, core_poll]
+      properties:
+        job_id:
+          type: string
+        core_job_id:
+          type: string
+        job_id_owner:
+          enum: [core]
+        status:
+          type: string
+        core_poll:
+          type: object
+  read_only: false
+  destructive: false
+  idempotent: false
+  execution: async
+  affinity: any
+  job_strategy: monolithic
+  timeout_hint_secs: 660
+  source_file: scripts/cook_package.py
+  annotations:
+    read_only_hint: false
+    destructive_hint: false
+    idempotent_hint: false
+- name: render_archive
+  description: Render a hash-pinned SBSAR twice and publish exact channel precision and color-space artifacts after complete PNG and byte readback.
+  input_schema:
+    type: object
+    additionalProperties: false
+    required: [archive_path, expected_archive_sha256, graph_identifier, output_dir, outputs]
+    properties:
+      archive_path:
+        type: string
+        minLength: 1
+      expected_archive_sha256:
+        type: string
+        pattern: '^[0-9a-f]{64}$'
+      graph_identifier:
+        type: string
+        pattern: '^[A-Za-z][A-Za-z0-9_]{0,127}$'
+      output_dir:
+        type: string
+        minLength: 1
+      outputs:
+        type: array
+        minItems: 1
+        maxItems: 8
+        items:
+          type: object
+          additionalProperties: false
+          required: [name, bit_depth, color_space]
+          properties:
+            name:
+              type: string
+              pattern: '^[A-Za-z][A-Za-z0-9_]{0,127}$'
+            bit_depth:
+              type: integer
+              enum: [8, 16]
+            color_space:
+              type: string
+              enum: [Raw, sRGB]
+      resolution:
+        type: integer
+        enum: [256, 512, 1024, 2048, 4096]
+        default: 1024
+      seed:
+        type: integer
+        minimum: 0
+        maximum: 2147483647
+      input_images:
+        type: array
+        maxItems: 8
+        items:
+          type: object
+          additionalProperties: false
+          required: [name, path, sha256, color_space]
+          properties:
+            name:
+              type: string
+              pattern: '^[A-Za-z][A-Za-z0-9_]{0,127}$'
+            path:
+              type: string
+              minLength: 1
+            sha256:
+              type: string
+              pattern: '^[0-9a-f]{64}$'
+            color_space:
+              type: string
+              enum: [Raw, sRGB]
+      normal_convention:
+        type: string
+        enum: ['OpenGL (+Y)', 'DirectX (-Y)']
+      timeout_seconds:
+        type: integer
+        minimum: 1
+        maximum: 600
+        default: 300
+  output_schema:
+    type: object
+    oneOf:
+    - required: [success, message]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    - required: [job_id, core_job_id, job_id_owner, status, core_poll]
+      properties:
+        job_id:
+          type: string
+        core_job_id:
+          type: string
+        job_id_owner:
+          enum: [core]
+        status:
+          type: string
+        core_poll:
+          type: object
+  read_only: false
+  destructive: false
+  idempotent: false
+  execution: async
+  affinity: any
+  job_strategy: monolithic
+  timeout_hint_secs: 1260
+  source_file: scripts/render_archive.py
+  annotations:
+    read_only_hint: false
+    destructive_hint: false
+    idempotent_hint: false
+
+- name: bake_position_map
+  description: Bake one hash-pinned UV0 triangulated OBJ into bbox-normalized native
+    EXR positions twice, with complete finite RGB readback and preserved warnings.
+  input_schema:
+    type: object
+    additionalProperties: false
+    required:
+    - mesh_path
+    - expected_mesh_sha256
+    - output_dir
+    properties:
+      mesh_path:
+        type: string
+        minLength: 1
+      expected_mesh_sha256:
+        type: string
+        pattern: ^[0-9a-f]{64}$
+      output_dir:
+        type: string
+        minLength: 1
+      resolution:
+        type: integer
+        enum:
+        - 256
+        - 512
+        - 1024
+        - 2048
+        - 4096
+        default: 2048
+      padding_radius:
+        type: integer
+        minimum: 0
+        maximum: 32
+        default: 4
+      timeout_seconds:
+        type: integer
+        minimum: 1
+        maximum: 600
+        default: 300
+  output_schema:
+    type: object
+    oneOf:
+    - required:
+      - success
+      - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        context:
+          type: object
+    - required:
+      - job_id
+      - core_job_id
+      - job_id_owner
+      - status
+      - core_poll
+      properties:
+        job_id:
+          type: string
+        core_job_id:
+          type: string
+        job_id_owner:
+          enum:
+          - core
+        status:
+          type: string
+        core_poll:
+          type: object
+  read_only: false
+  destructive: false
+  idempotent: false
+  execution: async
+  affinity: any
+  job_strategy: monolithic
+  timeout_hint_secs: 1260
+  source_file: scripts/bake_position_map.py
+  annotations:
+    read_only_hint: false
+    destructive_hint: false
+    idempotent_hint: false

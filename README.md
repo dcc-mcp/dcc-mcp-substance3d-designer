@@ -119,6 +119,67 @@ dialog.
 
 ## Bundled skills
 
+### Offline SBS/SBSAR and mesh-position artifacts
+
+With official `sbscooker` and `sbsrender` already installed, start the independent
+artifact service without opening Designer:
+
+```bash
+dcc-mcp-designer-offline --designer-bin "/path/to/installed/Designer/bin"
+dcc-mcp-cli search --instance-id <returned-uuid> --query "offline cook render"
+dcc-mcp-cli describe <returned-tool-slug> --instance-id <returned-uuid>
+dcc-mcp-cli call <returned-tool-slug> --instance-id <returned-uuid> --json-file render.json --wait
+```
+
+The runtime is registered as `standalone`, with no GUI PID binding. Its bundled
+skill root contains only `designer-offline`; graph editing remains on the
+embedded Designer service. Existing GUI sessions can also load this skill when
+their operator configures `DCC_MCP_SUBSTANCE3D_DESIGNER_BIN`.
+
+`cook_package` takes an SBS path, its expected SHA256 and a fresh output directory.
+It records actual source/archive/tool hashes. The cooker reads an owned snapshot
+beside the original SBS, so its directory must be writable. Relative dependencies
+retain that directory; their hashes are not separately collected.
+
+`bake_position_map` uses installed `substance3d_baker` for a hash-pinned,
+self-contained triangulated OBJ with positive UV0 indices and one UV tile.
+It bakes bbox-normalized XYZ into Raw EXR twice, records native padding,
+warnings and argv, and verifies every RGB float sample through installed FFmpeg.
+Supply `--ffmpeg "/path/to/installed/ffmpeg"` on the standalone service or set
+`DCC_MCP_SUBSTANCE3D_DESIGNER_FFMPEG`. No decoder is downloaded or installed.
+Actual mesh/UV correspondence and complete coverage remain caller audits;
+native warnings are retained without being treated as proof of coverage.
+
+`render_archive` takes an SBSAR path and hash, a graph identifier, the **complete**
+output set, a fresh directory and expected resolution. For example:
+
+```json
+{
+  "archive_path": "/path/to/material.sbsar",
+  "expected_archive_sha256": "replace-with-the-actual-64-character-lowercase-sha256",
+  "graph_identifier": "Skin",
+  "output_dir": "/path/to/fresh-material-run",
+  "outputs": [
+    {"name": "BaseColor", "bit_depth": 8, "color_space": "sRGB"},
+    {"name": "Height", "bit_depth": 16, "color_space": "Raw"}
+  ],
+  "resolution": 2048
+}
+```
+
+An optional `seed` override requires an exposed `$randomseed` input in the
+compiled archive. Fixed graph defaults remain unchanged; a requested size must
+match actual native PNG dimensions even when `$outputsize` is not exposed.
+Optional image input identifiers must also appear in the compiled interface.
+
+Each channel gets an explicit native bit depth and color space. The renderer
+validates complete PNG chunks, checksums, dimensions, precision and compressed
+scanlines, then compares two native renders byte for byte before publishing
+`manifest.json`. Up to eight optional PNG inputs are independently hash pinned.
+Constant channels are valid. Tangent normal conventions remain caller-declared;
+displacement units and downstream shader acceptance belong to the consumer.
+Offline artifact success does not prove a live Designer SDK session.
+
 Host APIs are imported only while a tool runs, so metadata discovery remains safe
 outside Designer.
 
@@ -126,6 +187,7 @@ outside Designer.
 | --- | --- |
 | `designer-session` | Core graph authoring: nodes, connections, parameters, outputs, packages, resources, map export, SBSAR. |
 | `designer-diagnostics` | Read-only readiness probe proving main-thread dispatch works. |
+| `designer-offline` | Hash-pinned CLI SBS cooking, twice-verified SBSAR maps and native mesh-position EXR artifacts without a GUI. |
 | `designer-effects` | **Experimental** - procedural effect recipes: blur, warp, levels, sharpen, edge detect, blend, mask, and ordered chains. Recipes resolve at runtime; see the note below. |
 | `designer-lighting` | **Experimental** - lighting-response maps: normal, ambient occlusion, curvature, thickness, emissive. Recipes resolve at runtime; see the note below. |
 | `designer-particles` | Seed-variation tiles and sprite-sheet atlas packing for downstream particle systems. |

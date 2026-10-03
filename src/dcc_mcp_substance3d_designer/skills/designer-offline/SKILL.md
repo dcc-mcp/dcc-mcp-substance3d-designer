@@ -90,5 +90,9 @@ remain unchanged; output dimensions must match the requested resolution.
 
 Native processes use the adapter's existing owned process-tree supervisor;
 timeouts and cleanup failures reject the artifact. Output publication never
-overwrites an existing directory. Graph authoring through the Designer SDK
+overwrites an existing directory. Windows sharing violations while reading an
+atomic process receipt retry for at most 0.5 seconds within the existing
+deadline; malformed receipts and other file errors remain failures. CLI log
+cleanup shares that same deadline and retains native diagnostics before removal.
+Graph authoring through the Designer SDK
 continues to use `designer-session` on a running GUI instance.

@@ -46,6 +46,29 @@ def test_resource_instance_returns_native_handle(host):
     assert target.nodes[0].getReferencedResource() is resource
 
 
+def test_compiled_resource_is_instanced_from_explicit_archive(monkeypatch, tmp_path):
+    path = tmp_path / "compiled.sbsar"
+    path.write_bytes(b"archive")
+    module = ModuleType("sd.api.sdgraph")
+    module.SDGraph = Graph
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    target = Graph("target")
+    resource = SimpleNamespace(getUrl=lambda: "pkg://compiled-material")
+    package = SimpleNamespace(findResourceFromUrl=lambda url: resource)
+    requested = []
+
+    def find(requested_path):
+        requested.append(requested_path)
+        return package
+
+    monkeypatch.setattr(api, "package_manager", lambda: SimpleNamespace(getUserPackageFromFilePath=find))
+    monkeypatch.setattr(api, "active_graph", lambda: target)
+    result = resources.instance_resource(str(path), resource.getUrl(), "target")
+    assert requested == [str(path)]
+    assert result == {"graph_uid": "target", "node_id": "123", "resource_url": resource.getUrl()}
+    assert target.nodes[0].getReferencedResource() is resource
+
+
 @pytest.mark.parametrize("indirect", [False, True])
 def test_resource_instance_rejects_recursion_before_mutation(host, indirect):
     target, resource, package = host

@@ -42,7 +42,8 @@ def load_and_validate_receipt(
 ) -> Dict[str, Any]:
     """Require exact current ownership before verify, upgrade, or uninstall."""
     receipt = load_json(ctx.receipt_path)
-    expected_paths = (ctx.plugin_path.resolve(), ctx.launcher_path.resolve())
+    legacy_paths = (ctx.plugin_path.resolve(), ctx.launcher_path.resolve())
+    current_paths = (*legacy_paths, ctx.startup_path.resolve())
     files = receipt.get("files")
     adapter_version = receipt.get("adapter_version")
     if (
@@ -53,7 +54,7 @@ def load_and_validate_receipt(
         or _VERSION_RE.fullmatch(adapter_version) is None
         or (not allow_adapter_mismatch and adapter_version != __version__)
         or not isinstance(files, list)
-        or len(files) != len(expected_paths)
+        or len(files) not in (len(legacy_paths), len(current_paths))
     ):
         raise LifecycleFailure("receipt", "Designer install receipt does not match this adapter contract.")
     recorded: Dict[str, Mapping[str, Any]] = {}
@@ -65,6 +66,7 @@ def load_and_validate_receipt(
         if key in recorded:
             raise LifecycleFailure("receipt", "Designer install receipt contains duplicate file ownership.")
         recorded[key] = item
+    expected_paths = current_paths if len(files) == len(current_paths) else legacy_paths
     if set(recorded) != {os.path.normcase(str(path)) for path in expected_paths}:
         raise LifecycleFailure("receipt", "Designer install receipt does not own the exact managed files.")
     for expected in expected_paths:
@@ -78,10 +80,13 @@ def load_and_validate_receipt(
         if not expected.is_file() or _is_link_or_junction(expected) or hash_file(expected) != item.get("sha256"):
             raise LifecycleFailure("receipt", "A receipted Designer artifact is missing or changed.")
     payload_entries = tuple(_payload_entries(ctx.payload_root))
-    expected_payload = () if not ctx.plugin_path.exists() and allow_file_drift else (ctx.plugin_path,)
-    if len(payload_entries) != len(expected_payload) or any(
-        not _same_path(actual, expected) for actual, expected in zip(payload_entries, expected_payload)
-    ):
+    payload_paths = (ctx.plugin_path, ctx.startup_path) if expected_paths == current_paths else (ctx.plugin_path,)
+    expected_payload = tuple(
+        path for path in payload_paths if not allow_file_drift or path.exists() or path.is_symlink()
+    )
+    if len(payload_entries) != len(expected_payload) or {
+        os.path.normcase(str(path.resolve())) for path in payload_entries
+    } != {os.path.normcase(str(path.resolve())) for path in expected_payload}:
         raise LifecycleFailure("receipt", "Designer payload contains content not owned by the receipt.")
     expected_python = {
         "path": str(ctx.python_path),

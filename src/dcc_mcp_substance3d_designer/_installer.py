@@ -242,13 +242,30 @@ def _batch_literal(value: str) -> str:
     return value.replace("%", "%%")
 
 
+def _startup_source(ctx: InstallContext) -> str:
+    return f'''"""Receipted Designer startup entry point; no UI input."""
+from dcc_mcp_core import capture_bootstrap_errors
+from dcc_mcp_substance3d_designer._startup import run_startup
+
+with capture_bootstrap_errors(
+    phase="startup", dcc_name="substance3d_designer",
+    adapter_version={json.dumps(__version__)}, min_core_version={json.dumps(MIN_CORE_VERSION)},
+    log_dir={json.dumps(str(ctx.bootstrap_log_dir))},
+):
+    run_startup({json.dumps(str(ctx.plugin_path))})
+'''
+
+
 def _launcher_payload(ctx: InstallContext, *, platform_name: Optional[str] = None) -> bytes:
     plugin_root = str(ctx.plugin_path.parent)
     python_root = str(ctx.python_root)
+    startup_path = str(ctx.plugin_path.parent.parent / "startup.py")
     if (platform_name or os.name) == "nt":
         host = _batch_literal(str(ctx.host_path))
         plugins = _batch_literal(plugin_root)
         site_packages = _batch_literal(python_root)
+        python = _batch_literal(str(ctx.python_path))
+        startup = _batch_literal(startup_path)
         content = (
             "@echo off\r\n"
             "setlocal DisableDelayedExpansion\r\n"
@@ -262,7 +279,7 @@ def _launcher_payload(ctx: InstallContext, *, platform_name: Optional[str] = Non
             ") else (\r\n"
             f'  set "PYTHONPATH={site_packages}"\r\n'
             ")\r\n"
-            f'"{host}" %*\r\n'
+            f'"{python}" -m dcc_mcp_substance3d_designer._launch --host "{host}" --startup "{startup}" -- %*\r\n'
         )
     else:
         content = (
@@ -273,7 +290,8 @@ def _launcher_payload(ctx: InstallContext, *, platform_name: Optional[str] = Non
             '${adapter_plugins}"\n'
             'PYTHONPATH="${python_root}${PYTHONPATH:+:${PYTHONPATH}}"\n'
             "export SBS_DESIGNER_PYTHON_PATH PYTHONPATH\n"
-            f'exec {shlex.quote(str(ctx.host_path))} "$@"\n'
+            f"exec {shlex.quote(str(ctx.python_path))} -m dcc_mcp_substance3d_designer._launch "
+            f'--host {shlex.quote(str(ctx.host_path))} --startup {shlex.quote(startup_path)} -- "$@"\n'
         )
     return content.encode("utf-8")
 
@@ -312,7 +330,10 @@ def _receipt(ctx: InstallContext, installed_at: float) -> Dict[str, Any]:
             ),
             "server_binary_path": None if ctx.server_binary_path is None else str(ctx.server_binary_path),
         },
-        "files": [{"path": str(path), "sha256": _hash_file(path)} for path in (ctx.plugin_path, ctx.launcher_path)],
+        "files": [
+            {"path": str(path), "sha256": _hash_file(path)}
+            for path in (ctx.plugin_path, ctx.launcher_path, ctx.startup_path)
+        ],
         "installed_at": datetime.fromtimestamp(installed_at, timezone.utc).isoformat(),
         "installed_at_epoch": installed_at,
         "bootstrap_error_dir": str(ctx.bootstrap_log_dir),
@@ -391,6 +412,7 @@ def _execute_install(ctx: InstallContext, environ: Mapping[str, str]) -> Lifecyc
     next_steps: Sequence[Dict[str, Any]] = []
     staged_plugin.parent.mkdir(parents=True)
     staged_plugin.write_text(_plugin_source(ctx), encoding="utf-8")
+    (staged_payload / "startup.py").write_text(_startup_source(ctx), encoding="utf-8")
     installed_at = time.time()
     try:
         backup_payload.parent.mkdir(parents=True, exist_ok=True)

@@ -67,6 +67,10 @@ class InstallContext:
     server_distribution_root: Optional[Path] = None
     server_binary_path: Optional[Path] = None
 
+    @property
+    def startup_path(self) -> Path:
+        return self.payload_root / "startup.py"
+
 
 @dataclass(frozen=True)
 class LifecycleOutcome:

@@ -150,6 +150,13 @@ Supply `--ffmpeg "/path/to/installed/ffmpeg"` on the standalone service or set
 Actual mesh/UV correspondence and complete coverage remain caller audits;
 native warnings are retained without being treated as proof of coverage.
 
+`inspect_mesh_baker` reads bounded help from the installed official Color or
+Position baker. `bake_color_map` bakes caller-authored FBX vertex or material
+colours twice into UV0 PNG, with exact input/tool hashes, fixed same-mesh
+projection settings, complete PNG validation and retained warnings. Region
+assignment, packed UV coverage and geometry correspondence remain caller audits;
+the tool does not recognize anatomy or invent region colours from UV islands.
+
 `render_archive` takes an SBSAR path and hash, a graph identifier, the **complete**
 output set, a fresh directory and expected resolution. For example:
 
@@ -187,7 +194,7 @@ outside Designer.
 | --- | --- |
 | `designer-session` | Core graph authoring: nodes, connections, parameters, outputs, packages, resources, map export, SBSAR. |
 | `designer-diagnostics` | Read-only readiness probe proving main-thread dispatch works. |
-| `designer-offline` | Hash-pinned CLI SBS cooking, twice-verified SBSAR maps and native mesh-position EXR artifacts without a GUI. |
+| `designer-offline` | Hash-pinned SBS cooking, twice-verified SBSAR maps, mesh-position EXR and explicit FBX colour-ID artifacts without a GUI. |
 | `designer-effects` | **Experimental** - procedural effect recipes: blur, warp, levels, sharpen, edge detect, blend, mask, and ordered chains. Recipes resolve at runtime; see the note below. |
 | `designer-lighting` | **Experimental** - lighting-response maps: normal, ambient occlusion, curvature, thickness, emissive. Recipes resolve at runtime; see the note below. |
 | `designer-particles` | Seed-variation tiles and sprite-sheet atlas packing for downstream particle systems. |

@@ -2,7 +2,7 @@
 name: designer-offline
 description: >-
   Offline artifact skill - cook hash-pinned SBS sources and render compiled
-  SBSAR maps and bake pinned UV0 mesh positions with installed official
+  SBSAR maps and bake pinned UV0 mesh positions and FBX colour IDs with installed official
   Substance tools without a Designer GUI.
 license: MIT
 compatibility: "Installed sbscooker/sbsrender; optional substance3d_baker/FFmpeg for positions; dcc-mcp-core 0.20.15+"
@@ -13,8 +13,8 @@ metadata:
     version: "0.8.1" # x-release-please-version
     layer: task
     stage: production
-    search-hint: "offline substance designer cook SBS SBSAR render CLI maps headless artifacts"
-    tags: "substance,designer,offline,cook,render,artifacts"
+    search-hint: "offline substance designer cook SBS SBSAR render CLI maps headless mesh baker color material vertex IDs position artifacts"
+    tags: "substance,designer,offline,cook,render,baker,color-id,position,artifacts"
     tools: tools.yaml
 ---
 
@@ -42,6 +42,24 @@ pass shell commands, install software or control a GUI.
 5. Read the returned manifest. Every PNG has complete chunk/checksum/scanline
    validation. Two official renders must have identical actual bytes before
    the output directory is published.
+6. `inspect_mesh_baker` returns the installed, hash-pinned Color or Position
+   baker's bounded help. `bake_color_map` accepts one hash-pinned FBX with
+   caller-authored vertex or material colours. It uses that exact owned scene
+   as both low and high geometry, records fixed UV0/projection settings, and
+   requires byte-identical native PNG rerenders. Random mesh/UV-island ID
+   generators are deliberately outside this explicit colour contract.
+   Native PNG precision is read from the actual file (8-bit or 16-bit),
+   completely validated, and recorded without quantizing pixels. Missing
+   requested native colour attributes reject publication even when the baker
+   writes a complete blank image.
+
+Colour baking establishes native files and their provenance; callers still
+validate region assignment, packing, coverage and UV correspondence against
+actual indexed geometry. The adapter does not parse FBX topology or recognize
+anatomy. Vertex colour interpolation and native ray projection can introduce
+boundary pixels; keep native warnings and verify the intended region palette.
+For material colours, the installed native baker requires FBX. See Adobe's
+[official baker options](https://adobedocs.github.io/substance-automation-toolkit/pysbs/sat_commandlines/substance3d_baker_options.html).
 
 Raw covers linear data such as roughness, height and normals; declare sRGB for
 color only when that is the source graph's intended encoding. Tangent normal

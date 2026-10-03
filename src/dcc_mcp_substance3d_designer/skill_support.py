@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable
 
 from dcc_mcp_core.skill import skill_error, skill_success
@@ -14,6 +15,15 @@ def typed_result(message: str, operation: Callable[..., dict[str, Any]], *args: 
         context = operation(*args, **kwargs)
     except GraphAuthoringError as exc:
         return skill_error(str(exc), exc.code)
+    except OSError as exc:
+        # Preserve bounded OS diagnostics without exposing a full host path.
+        return skill_error(
+            "Designer file operation failed",
+            type(exc).__name__,
+            errno=exc.errno,
+            winerror=getattr(exc, "winerror", None),
+            file=Path(exc.filename).name if exc.filename else None,
+        )
     except BaseException as exc:
         # Adobe's APIException inherits BaseException, not Exception. Keep
         # KeyboardInterrupt/SystemExit and unrelated BaseExceptions observable.

@@ -32,6 +32,9 @@ def _png(depth=8, value=0):
 def render_request(tmp_path, monkeypatch):
     executable = tmp_path / "sbsrender"
     executable.write_bytes(b"test-only fake native runner identity")
+    engine = tmp_path / "plugins/engines/substance_sse2_blend.dll"
+    engine.parent.mkdir(parents=True)
+    engine.write_bytes(b"test-only fixed native engine identity")
     archive = tmp_path / "input.sbsar"
     archive.write_bytes(b"test-only archive; native baking is a separate smoke")
     monkeypatch.setattr(offline, "installed_tool", lambda name: executable)
@@ -72,6 +75,99 @@ def test_pinned_render_publishes_complete_verified_files_and_accepts_constants(r
         path = Path(result["output_dir"]) / "maps" / item["file"]
         assert hashlib.sha256(path.read_bytes()).hexdigest() == item["sha256"]
     assert not list(Path(result["output_dir"]).parent.glob(".designer-render-*"))
+
+
+def test_explicit_8k_request_cannot_publish_smaller_native_outputs(render_request, monkeypatch):
+    render_request["resolution"] = 8192
+    monkeypatch.setattr(offline, "run_artifact_command", _render)
+    with pytest.raises(GraphAuthoringError, match="dimensions"):
+        offline.render_archive(**render_request)
+    assert not Path(render_request["output_dir"]).exists()
+
+
+def test_unbounded_16k_request_cannot_launch_a_native_process(render_request, monkeypatch):
+    render_request["resolution"] = 16384
+    monkeypatch.setattr(offline, "run_artifact_command", lambda *_args, **_kwargs: pytest.fail("Unbounded request"))
+    with pytest.raises(GraphAuthoringError, match="resolution"):
+        offline.render_archive(**render_request)
+    assert not Path(render_request["output_dir"]).exists()
+
+
+def test_gpu_engine_is_a_fixed_installed_hashed_library(render_request, monkeypatch):
+    engine = Path(render_request["archive_path"]).parent / "plugins/engines/substance_d3d11_blend.dll"
+    engine.write_bytes(b"test-only fixed GPU engine identity")
+    commands = []
+
+    def render(command, log, **kwargs):
+        if command[1] == "render":
+            commands.append(command)
+            assert command[command.index("--engine") + 1] == str(engine.resolve())
+        _render(command, log, **kwargs)
+
+    monkeypatch.setattr(offline, "run_artifact_command", render)
+    result = offline.render_archive(**render_request, engine="d3d11")
+    assert len(commands) == 2
+    assert result["artifact"]["engine"] == {
+        "identifier": "d3d11",
+        "file": engine.name,
+        "sha256": hashlib.sha256(engine.read_bytes()).hexdigest(),
+    }
+
+
+@pytest.mark.parametrize("engine", ["../evil.dll", "auto", "D3D11", True])
+def test_caller_cannot_select_arbitrary_engine_libraries(render_request, monkeypatch, engine):
+    monkeypatch.setattr(offline, "run_artifact_command", lambda *_args, **_kwargs: pytest.fail("Run after preflight"))
+    with pytest.raises(GraphAuthoringError, match="engine identifier"):
+        offline.render_archive(**render_request, engine=engine)
+    assert not Path(render_request["output_dir"]).exists()
+
+
+def test_uninstalled_engine_cannot_fall_back_to_cpu(render_request, monkeypatch):
+    monkeypatch.setattr(offline, "run_artifact_command", lambda *_args, **_kwargs: pytest.fail("Run after preflight"))
+    with pytest.raises(GraphAuthoringError) as error:
+        offline.render_archive(**render_request, engine="d3d11")
+    assert error.value.code == "OFFLINE_ENGINE_UNAVAILABLE"
+    assert not Path(render_request["output_dir"]).exists()
+
+
+def test_engine_change_during_render_cannot_publish(render_request, monkeypatch):
+    engine = Path(render_request["archive_path"]).parent / "plugins/engines/substance_sse2_blend.dll"
+
+    def render(command, log, **kwargs):
+        _render(command, log, **kwargs)
+        if command[1] == "render":
+            engine.write_bytes(b"changed engine after first native render")
+
+    monkeypatch.setattr(offline, "run_artifact_command", render)
+    with pytest.raises(GraphAuthoringError) as error:
+        offline.render_archive(**render_request)
+    assert error.value.code == "INPUT_HASH_CHANGED"
+    assert not Path(render_request["output_dir"]).exists()
+
+
+def test_native_renderer_help_has_only_fixed_arguments(render_request, monkeypatch):
+    def native_help(command, log, **kwargs):
+        assert command[1:] == ["render", "--help"] and kwargs["timeout"] == 30
+        log.write_text("Official render help: --engine sse2 d3d11")
+
+    monkeypatch.setattr(offline, "run_artifact_command", native_help)
+    result = offline.inspect_renderer()
+    assert result["route"] == "official CLI"
+    assert result["installed_engines"][0]["identifier"] == "sse2"
+    assert "no GPU render claim" in result["engine_availability_scope"]
+
+
+def test_file_operation_error_retains_bounded_os_diagnostics():
+    from dcc_mcp_substance3d_designer.skill_support import typed_result
+
+    def fail():
+        raise PermissionError(13, "private operation detail", "private-directory/owned-file.exr")
+
+    result = typed_result("render", fail)
+    assert result["error"] == "PermissionError"
+    assert result["context"]["errno"] == 13
+    assert result["context"]["file"] == "owned-file.exr"
+    assert "private-directory" not in json.dumps(result)
 
 
 @pytest.mark.parametrize(
@@ -253,7 +349,11 @@ def test_async_output_contract_accepts_the_real_core_poll_envelope():
         "core_poll": {"owner": "core", "tool": "jobs_get_status"},
     }
     for tool in tools:
-        jsonschema.validate(queued, tool["output_schema"])
+        if tool["execution"] == "async":
+            jsonschema.validate(queued, tool["output_schema"])
+        else:
+            with pytest.raises(jsonschema.ValidationError):
+                jsonschema.validate(queued, tool["output_schema"])
         jsonschema.validate({"success": True, "message": "Finished", "context": {}}, tool["output_schema"])
         with pytest.raises(jsonschema.ValidationError):
             jsonschema.validate({"status": "success"}, tool["output_schema"])

@@ -7,7 +7,12 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
-from ._install_process import _cleanup_owned_process, _run_bounded_command_in_root, _start_owned_process
+from ._install_process import (
+    _cleanup_owned_process,
+    _remove_probe_directory,
+    _run_bounded_command_in_root,
+    _start_owned_process,
+)
 from .graph_authoring import GraphAuthoringError
 
 
@@ -31,11 +36,20 @@ def run_artifact_command(command: list[str], log: Path, *, timeout: int = 300) -
     """Capture bounded CLI logs using the existing owned process-tree supervisor."""
     if type(timeout) is not int or not 1 <= timeout <= 600:
         raise GraphAuthoringError("Artifact timeout must be 1..600 seconds", "INVALID_RENDER_TIMEOUT")
-    with tempfile.TemporaryDirectory(prefix="designer-artifact-process-") as temporary:
-        result = _run_bounded_command_in_root(command, Path(temporary), deadline=time.monotonic() + timeout)
-    text = str(result.get("stdout", "")) + "\n" + str(result.get("stderr", ""))
-    log.write_text(text, encoding="utf-8")
+    deadline = time.monotonic() + timeout
+    temporary = Path(tempfile.mkdtemp(prefix="designer-artifact-process-"))
+    try:
+        result = _run_bounded_command_in_root(command, temporary, deadline=deadline)
+        text = str(result.get("stdout", "")) + "\n" + str(result.get("stderr", ""))
+        log.write_text(text, encoding="utf-8")
+    finally:
+        # Windows inspection may briefly hold the closed output files. Reuse the
+        # bounded cleanup contract rather than masking native logs with rmtree.
+        cleanup_ok = _remove_probe_directory(temporary, deadline=deadline)
+    if not cleanup_ok:
+        raise GraphAuthoringError("Could not remove owned CLI logs within the deadline", "OFFLINE_CLEANUP_FAILED")
     if not result.get("success") or "[ERROR]" in text:
+        detail = str(result.get("reason") or "native return code " + str(result.get("returncode", "unavailable")))[:512]
         raise GraphAuthoringError(
-            "Official CLI failed, timed out or could not verify cleanup", "OFFLINE_PROCESS_FAILED"
+            "Official CLI failed, timed out or could not verify cleanup: " + detail, "OFFLINE_PROCESS_FAILED"
         )

@@ -24,7 +24,8 @@ from .render_process import run_artifact_command
 _HASH = re.compile(r"[0-9a-f]{64}")
 _IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,127}")
 _MAX_BYTES = 128 * 1024 * 1024
-_RESOLUTIONS = (256, 512, 1024, 2048, 4096)
+_RESOLUTIONS = (256, 512, 1024, 2048, 4096, 8192)
+_ENGINES = ("sse2", "neon", "d3d11", "vk", "ogl3", "mtl")
 
 
 def _error(message, code="INVALID_OFFLINE_REQUEST"):
@@ -74,6 +75,59 @@ def installed_tool(name):
     if not path.is_file():
         _error("Installed official CLI tool is unavailable: " + name, "OFFLINE_TOOLS_UNAVAILABLE")
     return path
+
+
+def _engine_path(executable, engine):
+    """Resolve an enum to one installed library; callers cannot supply paths."""
+    if engine not in _ENGINES:
+        _error("Choose a documented native render engine identifier")
+    matches = set()
+    for directory in (executable.parent / "plugins/engines", executable.parent / "engines", executable.parent):
+        if directory.is_dir():
+            for path in directory.iterdir():
+                if (
+                    path.is_file()
+                    and path.suffix.lower() in (".dll", ".so", ".dylib")
+                    and ("_" + engine + "_") in path.name.lower()
+                ):
+                    matches.add(path.resolve(strict=True))
+    if len(matches) != 1:
+        _error(
+            "Exactly one configured installed library is required for engine: " + engine, "OFFLINE_ENGINE_UNAVAILABLE"
+        )
+    return matches.pop()
+
+
+def inspect_renderer():
+    """Read fixed official render help and hash available installed libraries."""
+    executable = installed_tool("sbsrender")
+    tool_hash = _sha(executable)
+    with tempfile.TemporaryDirectory(prefix="designer-render-help-") as temporary:
+        log = Path(temporary) / "help.log"
+        run_artifact_command([str(executable), "render", "--help"], log, timeout=30)
+        help_text = log.read_text(encoding="utf-8")
+        if not help_text.strip() or len(help_text.encode("utf-8")) > 131072:
+            _error("Installed renderer help is empty or exceeds its budget", "OFFLINE_OUTPUT_MISSING")
+    engines = []
+    for engine in _ENGINES:
+        try:
+            path = _engine_path(executable, engine)
+        except GraphAuthoringError as error:
+            if error.code != "OFFLINE_ENGINE_UNAVAILABLE":
+                raise
+        else:
+            engines.append({"identifier": engine, "file": path.name, "sha256": _sha(path)})
+    if _sha(executable) != tool_hash:
+        _error("Configured renderer changed during inspection", "INPUT_HASH_CHANGED")
+    return {
+        "schema": "dcc-mcp.designer-renderer-help.v1",
+        "help": help_text,
+        "installed_engines": engines,
+        "engine_availability_scope": "installed library only; no GPU render claim",
+        "tool": {"name": executable.name, "sha256": tool_hash},
+        "route": "official CLI",
+        "designer_session_verified": False,
+    }
 
 
 def _snapshot(source, destination, expected):
@@ -224,6 +278,7 @@ def render_archive(
     input_images: list[dict] | None = None,
     normal_convention: str | None = None,
     timeout_seconds: int = 300,
+    engine: str = "sse2",
 ) -> dict:
     """Render one pinned SBSAR twice; keep channel units caller-declared."""
     graph_identifier = _identifier(graph_identifier)
@@ -234,6 +289,8 @@ def render_archive(
         or normal_convention not in (None, "OpenGL (+Y)", "DirectX (-Y)")
     ):
         _error("Unsupported resolution, seed or tangent normal convention")
+    if engine not in _ENGINES:
+        _error("Choose a documented native render engine identifier")
     if not isinstance(outputs, list) or not 1 <= len(outputs) <= 8:
         _error("Select one to eight explicit outputs")
     names = set()
@@ -267,6 +324,8 @@ def render_archive(
     archive = _pinned(archive_path, expected_archive_sha256, ".sbsar")
     executable = installed_tool("sbsrender")
     tool_hash = _sha(executable)
+    engine_path = _engine_path(executable, engine)
+    engine_hash = _sha(engine_path)
     destination = _destination(output_dir)
     with tempfile.TemporaryDirectory(prefix=".designer-render-", dir=destination.parent) as temporary:
         staging = Path(temporary) / "artifacts"
@@ -306,7 +365,7 @@ def render_archive(
             if _sha(target) != item["sha256"]:
                 _error("Owned image snapshot changed during readback", "INPUT_HASH_CHANGED")
             input_files.append((item, target))
-        files = []
+        files, warnings = [], []
         for attempt in ("maps", "readback"):
             target = staging / attempt
             target.mkdir()
@@ -325,7 +384,7 @@ def render_archive(
                 "--output-format",
                 "png",
                 "--engine",
-                "sse2",
+                str(engine_path),
                 "--cpu-count",
                 "4",
             ]
@@ -351,7 +410,12 @@ def render_archive(
                         f"{item['name']}@{item['color_space']}",
                     ]
                 )
-            run_artifact_command(command, staging / (attempt + ".log"), timeout=timeout_seconds)
+            log = staging / (attempt + ".log")
+            run_artifact_command(command, log, timeout=timeout_seconds)
+            native_lines = log.read_text(encoding="utf-8").splitlines()
+            warnings.extend({"attempt": attempt, "message": line} for line in native_lines if "[WARNING]" in line)
+            if any("[ERROR]" in line for line in native_lines):
+                _error("Official renderer reported a native error", "OFFLINE_PROCESS_FAILED")
             if _sha(snapshot) != expected_archive_sha256 or any(
                 _sha(path) != item["sha256"] for item, path in input_files
             ):
@@ -368,8 +432,8 @@ def render_archive(
                     )
                 if attempt == "readback" and path.read_bytes() != (staging / "maps" / path.name).read_bytes():
                     _error("Native rerender changed actual output bytes", "RERENDER_CHANGED")
-        if _sha(executable) != tool_hash:
-            _error("Configured tool changed during rendering", "INPUT_HASH_CHANGED")
+        if _sha(executable) != tool_hash or _sha(engine_path) != engine_hash:
+            _error("Configured renderer/engine changed during rendering", "INPUT_HASH_CHANGED")
         receipt = {
             "schema": "dcc-mcp.designer-render.v1",
             "archive_sha256": expected_archive_sha256,
@@ -384,6 +448,8 @@ def render_archive(
                 for item, _ in input_files
             ],
             "tool": {"name": executable.name, "sha256": tool_hash},
+            "engine": {"identifier": engine, "file": engine_path.name, "sha256": engine_hash},
+            "native_warnings": warnings,
             "native_rerender_exact": True,
             "normal_convention": normal_convention,
             "normal_convention_source": "caller declaration",

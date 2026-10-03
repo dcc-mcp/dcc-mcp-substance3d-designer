@@ -152,6 +152,15 @@ It records actual source/archive/tool hashes. The cooker reads an owned snapshot
 beside the original SBS, so its directory must be writable. Relative dependencies
 retain that directory; their hashes are not separately collected.
 
+`inspect_renderer` reads installed official render help and engine library
+identities. `render_archive` accepts only documented engine identifiers:
+`sse2` (default), `neon`, `d3d11`, `vk`, `ogl3` and `mtl`. The selected installed
+library is resolved and hash-pinned; missing or ambiguous engines fail without
+CPU fallback. Native warnings and the selected library hash remain in the
+manifest. GPU-only graphs, including native 3D Perlin noise, require an actual
+GPU render; inspecting a library does not establish hardware acceptance. See
+[Adobe's renderer options](https://adobedocs.github.io/substance-automation-toolkit/pysbs/sat_commandlines/sbsrender_options.html).
+
 `bake_position_map` uses installed `substance3d_baker` for a hash-pinned,
 self-contained triangulated OBJ with positive UV0 indices and one UV tile.
 It bakes bbox-normalized XYZ into Raw EXR twice, records native padding,
@@ -160,6 +169,13 @@ Supply `--ffmpeg "/path/to/installed/ffmpeg"` on the standalone service or set
 `DCC_MCP_SUBSTANCE3D_DESIGNER_FFMPEG`. No decoder is downloaded or installed.
 Actual mesh/UV correspondence and complete coverage remain caller audits;
 native warnings are retained without being treated as proof of coverage.
+
+`inspect_mesh_baker` reads bounded help from the installed official Color or
+Position baker. `bake_color_map` bakes caller-authored FBX vertex or material
+colours twice into UV0 PNG, with exact input/tool hashes, fixed same-mesh
+projection settings, complete PNG validation and retained warnings. Region
+assignment, packed UV coverage and geometry correspondence remain caller audits;
+the tool does not recognize anatomy or invent region colours from UV islands.
 
 `render_archive` takes an SBSAR path and hash, a graph identifier, the **complete**
 output set, a fresh directory and expected resolution. For example:
@@ -198,7 +214,7 @@ outside Designer.
 | --- | --- |
 | `designer-session` | Core graph authoring: nodes, connections, parameters, outputs, packages, resources, map export, SBSAR. |
 | `designer-diagnostics` | Read-only readiness probe proving main-thread dispatch works. |
-| `designer-offline` | Hash-pinned CLI SBS cooking, twice-verified SBSAR maps and native mesh-position EXR artifacts without a GUI. |
+| `designer-offline` | Hash-pinned SBS cooking, twice-verified SBSAR maps, mesh-position EXR and explicit FBX colour-ID artifacts without a GUI. |
 | `designer-effects` | **Experimental** - procedural effect recipes: blur, warp, levels, sharpen, edge detect, blend, mask, and ordered chains. Recipes resolve at runtime; see the note below. |
 | `designer-lighting` | **Experimental** - lighting-response maps: normal, ambient occlusion, curvature, thickness, emissive. Recipes resolve at runtime; see the note below. |
 | `designer-particles` | Seed-variation tiles and sprite-sheet atlas packing for downstream particle systems. |

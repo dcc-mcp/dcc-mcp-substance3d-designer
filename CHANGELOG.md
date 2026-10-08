@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.9.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.8.1...v0.9.0) (2026-10-08)
+
+
+### Features
+
+* add offline material artifacts ([#48](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/48)) ([d1ff88c](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/d1ff88cc75da1b0981668a0393439d46d16c79d1))
+* add typed RGBA gradient editing ([c545023](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/c545023c29964f2ae7bf84d29775c9f0e508c05d))
+* add typed RGBA gradient editing ([8ebad62](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/8ebad628d93ed43621e566ef12b83f8554f633b2))
+* land the native Designer artifact stack ([#49](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/49)-[#52](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/52)) on main ([#53](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/53)) ([1ab9818](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/1ab9818abc0430057cad4a0db41abcbc787eca47))
+* support compiled package readback ([#46](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/issues/46)) ([2a1e4b2](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/2a1e4b259064a7239aebeda1e4a1603f977c72cd))
+
+
+### Bug Fixes
+
+* **install:** emit the Install SOP document schema version in reports and receipts ([38623dd](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/38623dd51721a958b8dc5d2e8957e991908333ac))
+* preserve native gradient pin order ([9df13ab](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/9df13ab68e613a47e2af23f455773409a67228cb))
+
+
+### Documentation
+
+* **readme:** add the generated DCC-MCP host matrix pointer ([0d4e5f5](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/0d4e5f5ca68101cfc9a661c6aaf7f573dd5a2256))
+
 ## [0.8.1](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.8.0...v0.8.1) (2026-09-20)
 
 

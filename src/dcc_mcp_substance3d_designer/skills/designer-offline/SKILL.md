@@ -10,7 +10,7 @@ allowed-tools: Python
 metadata:
   dcc-mcp:
     dcc: substance3d_designer
-    version: "0.8.1" # x-release-please-version
+    version: "0.9.0" # x-release-please-version
     layer: task
     stage: production
     search-hint: "offline substance designer cook SBS SBSAR render CLI GPU engine d3d11 Vulkan maps headless mesh baker color material vertex IDs position artifacts"

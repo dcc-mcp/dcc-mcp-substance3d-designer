@@ -712,7 +712,8 @@ def resolve_context(dcc_path: Optional[str], python_path: Optional[str], environ
     elif receipt_exists:
         receipt = load_json(receipt_path)
         files = receipt.get("files", [])
-        intact = isinstance(files, list) and len(files) == 2
+        # Discovery-only legacy launchers require a receipted startup activation repair.
+        intact = isinstance(files, list) and len(files) == 3
         for item in files if isinstance(files, list) else []:
             if not isinstance(item, dict):
                 intact = False

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.9.0...v0.9.1) (2026-11-24)
+
+
+### Documentation
+
+* refresh host matrix and retain Python 3.9 CI ([e98e565](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/e98e5655c4d8345d9746830769bdd7511614c0d1))
+* synchronize host matrix pointer with main ([d277060](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/commit/d2770609e0856b4bd1f8a22b15ef5969ca873880))
+
 ## [0.9.0](https://github.com/dcc-mcp/dcc-mcp-substance3d-designer/compare/v0.8.1...v0.9.0) (2026-10-17)
 
 
